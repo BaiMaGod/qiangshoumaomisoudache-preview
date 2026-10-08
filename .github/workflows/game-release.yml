@@ -94,8 +94,11 @@ jobs:
         if: success()
         uses: actions/upload-pages-artifact@v3
         with:
+          name: guncat-pages-${{ github.run_attempt }}
           path: private-game/.release-out/web
       - name: Deploy verified Web package to GitHub Pages
         if: success()
         id: publish
         uses: actions/deploy-pages@v4
+        with:
+          artifact_name: guncat-pages-${{ github.run_attempt }}
