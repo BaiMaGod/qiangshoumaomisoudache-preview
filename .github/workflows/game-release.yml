@@ -71,7 +71,7 @@ jobs:
         run: |
           python -m pip install playwright==1.55.0
           python -m playwright install --with-deps chromium
-      - name: Real SDK browser QA: start, move, shoot, loot, extract, sell
+      - name: 'Real SDK browser QA: start, move, shoot, loot, extract, sell'
         working-directory: private-game
         shell: bash
         run: |
