@@ -5,7 +5,7 @@ on:
     paths: [.github/workflows/game-evidence-gallery.yml]
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
   actions: read
   pages: write
   id-token: write
@@ -124,6 +124,25 @@ jobs:
           - CLI3.4.0资产准备阶段打印NoRenderPrimitiveDataHandle.inheriteRenderData的matrix TypeError，随后退出0并报告Build end, result=Success；包完整性和实际浏览器流程通过。CLI内部诊断尚未消除。
           - 本地工作环境连接中断，下载版报告和本地截图整理未能完成；原始截图、机器证据和报告已通过站点与Actions保留。最后一轮视觉复核状态以provenance.json记录为准。
           REPORT
+      - name: Retain exact PNG evidence for independent visual review
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const selected = ['base-390x844.png','raid-390x844.png','pause-375x667.png','success-375x667.png','failure-375x667.png','combat-polish-390x844.png','combat-polish-1440x900.png'];
+            const { owner, repo } = context.repo;
+            const ref = await github.rest.git.getRef({ owner, repo, ref: 'heads/main' });
+            const base = await github.rest.git.getCommit({ owner, repo, commit_sha: ref.data.object.sha });
+            const entries = [];
+            for (const name of selected) {
+              const bytes = fs.readFileSync('original-evidence/' + name);
+              const blob = await github.rest.git.createBlob({ owner, repo, content: bytes.toString('base64'), encoding: 'base64' });
+              entries.push({ path: 'qa-screenshots/' + name, mode: '100644', type: 'blob', sha: blob.data.sha });
+            }
+            const tree = await github.rest.git.createTree({ owner, repo, base_tree: base.data.tree.sha, tree: entries });
+            const commit = await github.rest.git.createCommit({ owner, repo, message: 'docs: retain exact final acceptance PNGs for visual review', tree: tree.data.sha, parents: [ref.data.object.sha] });
+            await github.rest.git.updateRef({ owner, repo, ref: 'heads/main', sha: commit.data.sha, force: false });
+            core.info('Retained ' + selected.length + ' original screenshots; source game files unchanged.');
       - uses: actions/upload-pages-artifact@v3
         with:
           name: guncat-evidence-pages-${{ github.run_id }}
