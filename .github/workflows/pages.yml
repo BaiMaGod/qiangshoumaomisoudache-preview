@@ -1,0 +1,49 @@
+name: Publish VERIFIED LayaAir Web to GitHub Pages
+on:
+  push:
+    branches: [main]
+    paths:
+      - index.html
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: verified-laya-pages
+  cancel-in-progress: false
+jobs:
+  pages:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate that files are a tested official Laya build, not source/mock
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
+          if(!fs.existsSync('index.html'))throw Error('No genuine compiled index.html available.');
+          if(!fs.existsSync('_build-evidence.json'))throw Error('Cannot deploy without real SDK/browser acceptance evidence.');
+          const e=JSON.parse(fs.readFileSync('_build-evidence.json','utf8'));
+          if(e.verifiedSource!=='real-engine-not-qa-mock'||e.engine!=='LayaAir 3.4 via official CLI'||e.browserSmokePassed!==true||!Array.isArray(e.browserSmokeViewport)||e.browserSmokeViewport.length<2)throw Error('Official engine build and dual viewport smoke tests are required.');
+          if(!Array.isArray(e.files)||!e.files.some(x=>x.path==='index.html')||!e.files.some(x=>x.path.endsWith('.js')))throw Error('Compiled file manifest is incomplete.');
+          if(fs.existsSync('src')||fs.existsSync('docs')||fs.existsSync('node_modules')||fs.existsSync('tools'))throw Error('Preview repo must contain built files only, not game source/docs');
+          const names=[];function walk(dir){for(const entry of fs.readdirSync(dir,{withFileTypes:true})){const p=path.join(dir,entry.name);if(entry.isDirectory()){if(entry.name==='.git'||entry.name==='.github')continue;walk(p)}else names.push(p.replaceAll('\\','/').replace(/^\.\//,''));}}
+          walk('.');
+          if(names.some(n=>/mock-laya|qa-bundle|\.qa-out|\.test-dist/i.test(n)))throw Error('QA harness found in supposed release');
+          for(const f of e.files){if(!fs.existsSync(f.path)||crypto.createHash('sha256').update(fs.readFileSync(f.path)).digest('hex')!==f.sha256)throw Error('Compiled package asset is missing or modified: '+f.path)}
+          console.log('Pages real-Laya release verified, files:',e.files.length);
+          NODE
+      - name: Assemble deploy root without workflow internals
+        run: |
+          mkdir -p _site
+          rsync -a --exclude=.git --exclude=.github --exclude=_site ./ _site/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4
