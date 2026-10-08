@@ -1,6 +1,12 @@
 name: Build private GunCat with LayaAir 3.4 and publish Pages
 on:
   workflow_dispatch:
+  # A release-workflow edit explicitly rechecks the latest private main.
+  # Deployment still requires ALL build + real browser gates to pass.
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/game-release.yml'
 permissions:
   contents: read
   pages: write
