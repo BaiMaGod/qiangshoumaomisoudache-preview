@@ -53,5 +53,8 @@ jobs:
           path: |
             ${{ runner.temp }}/GunCatCLIProbe/GunCatCLIProbe.laya
             ${{ runner.temp }}/GunCatCLIProbe/settings/
+            ${{ runner.temp }}/GunCatCLIProbe/src/
+            ${{ runner.temp }}/GunCatCLIProbe/assets/
+            ${{ runner.temp }}/GunCatCLIProbe/tsconfig.json
             ${{ runner.temp }}/laya-probe-web/
           if-no-files-found: error
