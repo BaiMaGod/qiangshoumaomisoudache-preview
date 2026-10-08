@@ -1,0 +1,134 @@
+name: Verified quality evidence gallery
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/game-evidence-gallery.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+  pages: write
+  id-token: write
+concurrency:
+  group: guncat-pages-production
+  cancel-in-progress: false
+jobs:
+  publish-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: guncat-pages-1
+          path: verified-package
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: BaiMaGod/qiangshoumaomisoudache-preview
+          run-id: 37812098367
+      - uses: actions/download-artifact@v4
+        with:
+          name: guncat-real-laya-browser-qa
+          path: original-evidence
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: BaiMaGod/qiangshoumaomisoudache-preview
+          run-id: 37812098367
+      - name: Verify exact previously tested game and attach original screenshots
+        run: |
+          mkdir web
+          tar -xf verified-package/artifact.tar -C web
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib,json,shutil,html
+          web=Path('web');ev=Path('original-evidence')
+          m=json.loads((web/'_build-evidence.json').read_text())
+          assert m['sourceCommit']=='996c068a83be12771ea6e65a67ba32078b0c78e4'
+          assert m['browserSmokePassed'] is True and m['touchSmokePassed'] is True
+          for f in m['files']:
+              assert hashlib.sha256((web/f['path']).read_bytes()).hexdigest()==f['sha256'],f['path']
+          perf=json.loads((ev/'performance.json').read_text())
+          assert len(perf)==3 and all(v['rafP95Ms']<=33.5 for v in perf)
+          summary=json.loads((ev/'acceptance-summary.json').read_text())
+          assert summary['status']=='passed' and summary['errors']==0
+          dst=web/'screenshots';dst.mkdir()
+          for f in ev.rglob('*'):
+              if f.is_file() and f.suffix in ('.png','.json'):
+                  target=dst/f.relative_to(ev);target.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(f,target)
+          before=json.loads((ev/'before/performance.json').read_text())
+          bm={p['viewport']:p['rafP95Ms'] for p in before}
+          rows=''.join(f"<tr><td>{p['viewport']}</td><td>{bm[p['viewport']]:.1f} ms</td><td>{p['rafP95Ms']:.1f} ms</td><td>通过</td></tr>" for p in perf)
+          sections=[]
+          states=[('首页','base'),('战斗','combat-polish'),('暂停','pause'),('背包','bag'),('撤离进度','extract-progress'),('成功结算','success'),('失败结算','failure'),('仓库','warehouse'),('军械库','weapons'),('出击','raid')]
+          for name,key in states:
+              cards=''.join(f'<figure><figcaption>{v}</figcaption><a href="{key}-{v}.png"><img loading="lazy" src="{key}-{v}.png" alt="{name} {v}"/></a></figure>' for v in ['390x844','375x667','1440x900'])
+              sections.append(f'<section><h2>{name}</h2><div class="grid">{cards}</div></section>')
+          comparison=''.join(f'<figure><figcaption>{label}</figcaption><a href="{path}"><img src="{path}" alt="{label}"></a></figure>' for label,path in [('原版首页','before/base-390x844.png'),('改版首页','base-390x844.png'),('原版进行中','before/raid-390x844.png'),('改版进行中','raid-390x844.png')])
+          page='''<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>枪手猫咪 · 品质升级实拍验收</title><style>body{margin:0;background:#0e2329;color:#efe3c1;font:16px/1.7 system-ui,sans-serif}main{max-width:1200px;margin:auto;padding:24px}h1,h2{color:#ffda91}a{color:#b3e2c7}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px}figure{margin:0;background:#173b40;padding:12px;border-radius:12px}figcaption{margin-bottom:8px;font-weight:bold}img{display:block;max-width:100%;max-height:640px;margin:auto;height:auto}table{border-collapse:collapse}td,th{border:1px solid #638477;padding:8px 16px}.note{background:#244747;padding:18px;border-radius:12px}section{margin:34px 0}</style><main><h1>枪手猫咪 · 品质升级实拍验收</h1><p>2026-10-08 · 官方 LayaAir 3.4.0 · 原始浏览器截图，点击可查看完整尺寸。</p><p><a href="../">进入试玩</a> · <a href="quality-report.md">完整修改与验收报告</a> · <a href="https://github.com/BaiMaGod/qiangshoumaomisoudache-preview/actions/runs/37812098367">原构建/操作日志与完整证据下载</a></p><div class="note">38项回归通过；390×844、375×667、1440×900完成实际输入的核心流程；两手机尺寸触摸松手/取消通过；浏览器JS与资源错误为0。音效试听、实体手机、深区Boss与长局压力待验。CLI资产准备阶段仍有内部matrix诊断，导出成功且包完整性和运行检查通过。尚未达到全部商业上线验收。</div><h2>同环境rAF帧间隔</h2><p>Ubuntu/Chromium/SwiftShader，DPR=2，每视口180帧；预设P95预算33.5ms。该代理不是实体手机GPU时间。</p><table><tr><th>视口</th><th>原版P95</th><th>改版P95</th><th>预算</th></tr>'''+rows+'</table><h2>同视口前后对比</h2><div class="grid">'+comparison+'</div>'+''.join(sections)+'</main></html>'
+          (dst/'index.html').write_text(page)
+          provenance={'kind':'original-unedited-screenshots-from-verified-build','sourceCommit':m['sourceCommit'],'originalRun':37812098367,'gameFileHashesUnchanged':True,'manualVisualReview':'pending','originalScreenshotHashes':{str(f.relative_to(dst)):hashlib.sha256(f.read_bytes()).hexdigest() for f in dst.rglob('*.png')}}
+          (dst/'provenance.json').write_text(json.dumps(provenance,indent=2))
+          print('VERIFIED_GAME_HASHES_UNCHANGED',len(m['files']),'screenshots',len(provenance['originalScreenshotHashes']))
+          PY
+      - name: Attach quality report
+        run: |
+          cat > web/screenshots/quality-report.md <<'REPORT'
+          # 枪手猫咪搜打撤 · 品质升级验收
+          
+          2026-10-08，已实装并通过浏览器范围验收、发布。实体手机、人工听感与长局仍待验，不能宣称全部商业上线品质完成。
+          
+          测试源码：996c068a83be12771ea6e65a67ba32078b0c78e4。官方构建与操作记录：https://github.com/BaiMaGod/qiangshoumaomisoudache-preview/actions/runs/37812098367 。本页重发布该已验证包并附原始截图，原50个构建文件的SHA256保持一致。
+          
+          ## 项目审查与评分
+          
+          项目采用 LayaAir 3.4 + TypeScript + WebGL Sprite，DOM叠层UI。domain/map/combat分离规则、地图和战斗几何，Main组织输入、循环和显示。原仓库没有图片/音频高品质素材，使用程序占位；实际截图确认角色横转、纯色场景、桌面旋转后UI错位。规则、地图、战斗几何三个模块的Git内容和blob散列与原版c406cc3037852ce099d5f4e614583bd4350372b2完全一致。
+          
+          以下满分5，为人工视觉审查意见，不是上线认证。原版/本轮：角色道具1/3.5（P0，仍单姿态）；场景1/3（P0，地面重复明显）；UI2/4（P0，首页、暂停、结果统一）；动画特效2/3.5（P1，分级火花与反馈，缺少多帧动作）；操作反馈2/4（P1，触摸取消和重开）；音效未试听不评分；性能以实测代理数据说明，不赋真机分。
+          
+          ## 修改清单
+          
+          1. 新建并实装18张约2.10MB WebP：橘猫、5类敌人、4类宝箱、物资、医疗包、墙体/箱堆、枪械、地面与基地插画。统一橘猫、青绿围巾、暖木、磨损金属和琥珀光。内置ImageGen原创生成；仓库assets/art/PROVENANCE.md保留来源记录。没有替换任何既有高品质角色、背景或音乐。
+          2. 透明图集按主体清理邻格残片、保留留边；逐图检查解码、宽高比、透明边缘和显示倍率。构建拦截空或截断WebP。运行时18张加载完成；角色采用脚底锚点，身体保持正向，枪械独立瞄准。
+          3. 首页使用完整基地插画；青绿材质面板、金色主按钮、暖红风险操作统一暂停、背包、仓库、军械库和成功/失败页。HUD区分生命、时限、负重、估值、弹药。结算分开显示物资估值和任务获得的币。
+          4. 关闭原版强制方向旋转，画布和DOM居中对齐；长屏调整展示高度，相机边缘夹紧消除露黑。为UI提供稳定合成层；墙体纹理按UV裁切，装饰范围与原碰撞矩形一致。
+          5. 暂停/背包清除提示残留；指针取消、丢失捕获、窗口失焦和切后台复位输入。重开清空临时效果，永久资产和原玩法保留。
+          
+          ## 动画、特效、声音与手感
+          
+          按键约80ms下压/0.97缩放；射击100ms枪口、后坐、170ms光迹；命中250ms冲击火花和620ms伤害数字；击杀提高扩散范围和火花数量并显示击倒；开箱切换发光素材并触发450ms搜刮光圈；受击280ms边缘提示。预警始终在人物下方，效果不参与碰撞/伤害/掉落/撤离判定。游戏没有连击和消除系统，本轮未新增这些玩法。
+          
+          短事件WebAudio用于点击、射击、命中、击杀、开箱、拾取、受击、治疗、成功/失败；首次手势解锁、静音持久化、限频与并发限制。支持的设备具有短促开箱/击杀/受击/成功震动；减少动态禁用触觉并减少装饰动画。当前没有背景音乐；真人音效听感和手机触觉待验。
+          
+          ## 性能
+          
+          在修改前设定180帧rAF P95≤33.5ms，未降低预算。最终三视口P95均33.4ms，实际数据和原版同环境记录在performance.json与before/performance.json。Ubuntu Runner、带Xvfb Chromium、DPR=2、ANGLE/SwiftShader软件渲染；rAF不等于GPU或实体手机帧率。
+          
+          实测早期改版P95约100ms，静态地形缓存后50ms，修正官方导出的2D多重采样设置后达标。透明素材保留平滑alpha边缘，DOM文本清晰。地形只构建一次、纹理共享；效果数组原地压缩；火花24、弹道35、浮字18封顶；HUD节点复用，音频节点结束后断开。没有降低游戏模拟步长或改变移动/判定来提分。
+          
+          ## 实际测试
+          
+          官方LayaAir CLI 3.4.0 Web构建和静态完整性检查、TS检查、38/38原规则/地图/战斗/发布门禁回归通过。
+          
+          三视口真实点击开始→暂停/继续及设置→键盘走位开箱→背包→自动射击/命中/击杀→主动3秒撤离→成功→仓库出售→武器解锁装备→存档重载→新局→主动放弃失败页→再次出击和连续3次重开，均通过，0浏览器JS/HTTP/请求失败。没有使用QA假引擎或局内传送。仅武器购买环节在已结算基地给永久存档提供确定性资源。
+          
+          两手机尺寸用Chromium原生触摸模拟拖摇杆、松手和touchCancel。观察真实手势结束后等待HUD只读坐标刷新，再以原4px漂移上限检查停止；未放宽停止标准。原生事件记录见touch-events-*.json。多次重开检查粒子与弹道回收。
+          
+          ## 截图比较与未解决项
+          
+          提供原版同视口截图和改版完整流程实拍；每张图片保持原始像素。用户上传图是原版问题画面，没有目标概念图，因此按预先制定的文字特征及原版比较，不报告目标像素相似度通过。
+          
+          - Android/iOS实体手机兼容性、发热、刘海安全区、长局内存和触觉体验待验。Chromium手机模拟不等于真机。
+          - 人工音效试听、耳机/扬声器响度与专业混音待验。
+          - 单姿态角色缺少正式多帧动作；霰弹枪共用冲锋枪视觉，物资采用通用图标，地面重复纹理仍可精修。
+          - 本轮核心流程以近撤线路为主，Boss深区与长局压力未完成专门人工游玩。
+          - CLI3.4.0资产准备阶段打印NoRenderPrimitiveDataHandle.inheriteRenderData的matrix TypeError，随后退出0并报告Build end, result=Success；包完整性和实际浏览器流程通过。CLI内部诊断尚未消除。
+          - 本地工作环境连接中断，下载版报告和本地截图整理未能完成；原始截图、机器证据和报告已通过站点与Actions保留。最后一轮视觉复核状态以provenance.json记录为准。
+          REPORT
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          name: guncat-evidence-pages-${{ github.run_id }}
+          path: web
+      - id: deployment
+        uses: actions/deploy-pages@v4
+        with:
+          artifact_name: guncat-evidence-pages-${{ github.run_id }}
