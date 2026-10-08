@@ -23,7 +23,7 @@ jobs:
           bash "$RUNNER_TEMP/laya-install.sh"
           echo "$HOME/.layaair" >> "$GITHUB_PATH"
           "$HOME/.layaair/layaair" install 3.4.0
-          "$HOME/.layaair/layaair" --version=3.4.0 --version
+          "$HOME/.layaair/layaair" list
       - name: Create real official 2D empty project
         shell: bash
         run: |
