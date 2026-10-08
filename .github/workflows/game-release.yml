@@ -1,9 +1,6 @@
 name: Build private GunCat with LayaAir 3.4 and publish Pages
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - '.github/workflows/game-release.yml'
 permissions:
   contents: read
   pages: write
