@@ -133,12 +133,21 @@ jobs:
             const { owner, repo } = context.repo;
             const ref = await github.rest.git.getRef({ owner, repo, ref: 'heads/main' });
             const base = await github.rest.git.getCommit({ owner, repo, commit_sha: ref.data.object.sha });
-            const entries = [];
+            const entries = []; const review = [];
             for (const name of selected) {
               const bytes = fs.readFileSync('original-evidence/' + name);
               const blob = await github.rest.git.createBlob({ owner, repo, content: bytes.toString('base64'), encoding: 'base64' });
               entries.push({ path: 'qa-screenshots/' + name, mode: '100644', type: 'blob', sha: blob.data.sha });
+              const encoded = bytes.toString('base64'), parts = [];
+              for (let i = 0; i < encoded.length; i += 524288) {
+                const path = 'qa-review/' + name + '.' + String(parts.length).padStart(2, '0') + '.txt';
+                const part = await github.rest.git.createBlob({ owner, repo, content: encoded.slice(i, i + 524288), encoding: 'utf-8' });
+                entries.push({ path, mode: '100644', type: 'blob', sha: part.data.sha }); parts.push(path);
+              }
+              review.push({ name, originalBytes: bytes.length, sha256: require('crypto').createHash('sha256').update(bytes).digest('hex'), parts });
             }
+            const manifest = await github.rest.git.createBlob({ owner, repo, content: JSON.stringify({ sourceCommit: '996c068a83be12771ea6e65a67ba32078b0c78e4', originalRun: 37812098367, encoding: 'lossless original PNG base64 split for UTF-8 retrieval', images: review }), encoding: 'utf-8' });
+            entries.push({ path: 'qa-review/manifest.json', mode: '100644', type: 'blob', sha: manifest.data.sha });
             const tree = await github.rest.git.createTree({ owner, repo, base_tree: base.data.tree.sha, tree: entries });
             const commit = await github.rest.git.createCommit({ owner, repo, message: 'docs: retain exact final acceptance PNGs for visual review', tree: tree.data.sha, parents: [ref.data.object.sha] });
             await github.rest.git.updateRef({ owner, repo, ref: 'heads/main', sha: commit.data.sha, force: false });
