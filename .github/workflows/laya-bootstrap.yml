@@ -1,0 +1,57 @@
+name: Probe official LayaAir 3.4 CLI (public runner)
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/laya-bootstrap.yml'
+permissions:
+  contents: read
+jobs:
+  official-cli-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install official LayaAir CLI runtime 3.4.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --show-error --silent --location https://raw.githubusercontent.com/layabox/layaair-cli/master/install.sh -o "$RUNNER_TEMP/laya-install.sh"
+          bash "$RUNNER_TEMP/laya-install.sh"
+          echo "$HOME/.layaair" >> "$GITHUB_PATH"
+          "$HOME/.layaair/layaair" install 3.4.0
+          "$HOME/.layaair/layaair" --version=3.4.0 --version
+      - name: Create real official 2D empty project
+        shell: bash
+        run: |
+          set -euo pipefail
+          layaair --version=3.4.0 create GunCatCLIProbe -t "2D empty project" -p "$RUNNER_TEMP" -s
+          test -f "$RUNNER_TEMP/GunCatCLIProbe/GunCatCLIProbe.laya"
+          echo "Official project generated:"
+          find "$RUNNER_TEMP/GunCatCLIProbe" -maxdepth 2 -type f | sort | head -55
+          echo "=== project descriptor ==="
+          head -c 3000 "$RUNNER_TEMP/GunCatCLIProbe/GunCatCLIProbe.laya" || true
+      - name: Build REAL empty LayaAir project for Web
+        shell: bash
+        run: |
+          set -euo pipefail
+          layaair --version=3.4.0 build --list-platforms -p "$RUNNER_TEMP/GunCatCLIProbe"
+          layaair --version=3.4.0 build web -p "$RUNNER_TEMP/GunCatCLIProbe" -o "$RUNNER_TEMP/laya-probe-web"
+          test -f "$RUNNER_TEMP/laya-probe-web/index.html"
+          test -n "$(find "$RUNNER_TEMP/laya-probe-web" -name '*.js' -print -quit)"
+          printf '\nREAL LAYA 3.4 EMPTY-PROJECT CLI BUILD SUCCEEDED\n'
+          find "$RUNNER_TEMP/laya-probe-web" -maxdepth 3 -type f | sort | head -65
+          echo "## Real LayaAir CLI smoke" >> "$GITHUB_STEP_SUMMARY"
+          echo "Official LayaAir 3.4.0 empty project and Web build passed. This is not the private game's build or publication." >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: official-laya-3-4-empty-project-and-web-build
+          path: |
+            ${{ runner.temp }}/GunCatCLIProbe/GunCatCLIProbe.laya
+            ${{ runner.temp }}/GunCatCLIProbe/settings/
+            ${{ runner.temp }}/laya-probe-web/
+          if-no-files-found: error
