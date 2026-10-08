@@ -1,3 +1,4 @@
+# M1 polish release: verify real tracer/damage feedback and extraction progress before deployment.
 name: Build private GunCat with LayaAir 3.4 and publish Pages
 on:
   workflow_dispatch:
