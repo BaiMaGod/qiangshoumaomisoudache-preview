@@ -28,7 +28,7 @@ jobs:
           if(!fs.existsSync('index.html'))throw Error('No genuine compiled index.html available.');
           if(!fs.existsSync('_build-evidence.json'))throw Error('Cannot deploy without real SDK/browser acceptance evidence.');
           const e=JSON.parse(fs.readFileSync('_build-evidence.json','utf8'));
-          if(e.verifiedSource!=='real-engine-not-qa-mock'||e.engine!=='LayaAir 3.4 via official CLI'||e.browserSmokePassed!==true||!Array.isArray(e.browserSmokeViewport)||e.browserSmokeViewport.length<2)throw Error('Official engine build and dual viewport smoke tests are required.');
+          if(e.verifiedSource!=='real-engine-not-qa-mock'||e.engine!=='LayaAir 3.4.0 official CLI runtime plus real TS gameplay entry'||e.browserSmokePassed!==true||e.touchSmokePassed!==true||!Array.isArray(e.browserSmokeViewport)||e.browserSmokeViewport.length<2)throw Error('Official engine build and dual viewport smoke tests are required.');
           if(!Array.isArray(e.files)||!e.files.some(x=>x.path==='index.html')||!e.files.some(x=>x.path.endsWith('.js')))throw Error('Compiled file manifest is incomplete.');
           if(fs.existsSync('src')||fs.existsSync('docs')||fs.existsSync('node_modules')||fs.existsSync('tools'))throw Error('Preview repo must contain built files only, not game source/docs');
           const names=[];function walk(dir){for(const entry of fs.readdirSync(dir,{withFileTypes:true})){const p=path.join(dir,entry.name);if(entry.isDirectory()){if(entry.name==='.git'||entry.name==='.github')continue;walk(p)}else names.push(p.replaceAll('\\','/').replace(/^\.\//,''));}}
