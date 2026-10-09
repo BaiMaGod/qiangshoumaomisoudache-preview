@@ -16,6 +16,7 @@ concurrency:
   group: guncat-pages-production
   cancel-in-progress: false
 jobs:
+  # Final fixed source snapshot: includes the concurrently added wall-aware advice.
   verify-build-and-deploy:
     name: Real Laya build → mobile browser QA → Pages
     runs-on: ubuntu-latest
