@@ -1,4 +1,4 @@
-# Production-art polish: pinned source, original baseline, desktop/mobile visual and gameplay gates.
+# Rarity loot and adaptive extraction guidance: verified new source snapshot, full browser and mobile gates.
 name: Build private GunCat with LayaAir 3.4 and publish Pages
 on:
   workflow_dispatch:
