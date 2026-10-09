@@ -38,7 +38,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: BaiMaGod/qiangshoumaomisoudache
-          ref: 8e1eaf7ea57b070a29bd4722456f4cef7d26873a
+          ref: eed680b89390aabee615e9ad70fb3aef964399bc
           fetch-depth: 0
           token: ${{ secrets.GUNCAT_SOURCE_READ_TOKEN }}
           path: private-game
@@ -143,3 +143,28 @@ jobs:
         uses: actions/deploy-pages@v4
         with:
           artifact_name: guncat-pages-${{ github.run_attempt }}
+      - name: Verify deployed source and live runtime bytes
+        if: success()
+        working-directory: private-game
+        run: |
+          python - <<'PY'
+          import hashlib,json,time,urllib.request
+          from pathlib import Path
+          local=json.loads(Path('.release-out/web/_build-evidence.json').read_text())
+          base='https://baimagod.github.io/qiangshoumaomisoudache-preview/'
+          version=local['sourceCommit']
+          def fetch(path):
+              with urllib.request.urlopen(base+path+'?verified='+version,timeout=45) as r:return r.read()
+          for attempt in range(12):
+              remote=json.loads(fetch('_build-evidence.json'))
+              if remote['sourceCommit']==version:break
+              time.sleep(5)
+          else:raise AssertionError('Pages did not serve the accepted source commit')
+          files={x['path']:x for x in local['files']}
+          names=['index.html','js/index.js','js/guncat-game.js','assets/art/scene-floor.webp','assets/art/scene-water.webp','assets/art/bg-home.webp','assets/art/bg-workshop.webp','assets/art/frame-metal.webp','assets/art/frame-leather.webp','assets/art/button-gold.webp','art-review/index.html','art-review/acceptance-summary.json']
+          for name in names:
+              data=fetch(name)
+              assert len(data)==files[name]['bytes'] and hashlib.sha256(data).hexdigest()==files[name]['sha256'],name
+          print('LIVE_ACCEPTED_SOURCE',version)
+          print('LIVE_ACCEPTED_FILE_HASHES',len(names))
+          PY
