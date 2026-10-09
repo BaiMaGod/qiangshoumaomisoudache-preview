@@ -38,7 +38,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: BaiMaGod/qiangshoumaomisoudache
-          ref: b1dcac24bb06fe71058a7993fab97da71c7cd70e
+          ref: 5f5045ab7498e99a06b8bc6678c0dfa6169f2e99
           fetch-depth: 0
           token: ${{ secrets.GUNCAT_SOURCE_READ_TOKEN }}
           path: private-game
@@ -100,6 +100,8 @@ jobs:
         working-directory: private-game
         shell: bash
         run: |
+          node tools/qa/render-profile.mjs
+          GUNCAT_HEADED=1 xvfb-run -a -s '-screen 0 1920x1080x24' python tools/qa/render-profile.py
           node tools/dev/build-baseline.mjs
           GUNCAT_HEADED=1 xvfb-run -a -s '-screen 0 1920x1080x24' python tools/qa/capture-baseline.py
           GUNCAT_HEADED=1 xvfb-run -a -s '-screen 0 1920x1080x24' npm run release:smoke
@@ -123,6 +125,12 @@ jobs:
             private-game/qa-evidence/real-laya/before/performance.json
           if-no-files-found: error
           compression-level: 6
+      - name: Export unretouched visual review
+        if: always()
+        working-directory: private-game
+        run: |
+          python -m pip install Pillow
+          python tools/qa/review-contact.py
       - name: Upload verified WEB OUTPUT only to Pages
         if: success()
         uses: actions/upload-pages-artifact@v3
