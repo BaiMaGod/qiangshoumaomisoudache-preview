@@ -1,0 +1,48 @@
+name: Read-only live art audit
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/live-art-review.yml']
+permissions:
+  contents: read
+jobs:
+  inspect-live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Install image review dependency
+        run: python -m pip install Pillow
+      - name: Verify live bytes and emit actual screenshots
+        run: |
+          python - <<'PY'
+          import base64,hashlib,io,json,time,urllib.request
+          from PIL import Image,ImageDraw
+          base='https://baimagod.github.io/qiangshoumaomisoudache-preview/'
+          stamp=str(time.time_ns())
+          def fetch(name):
+              req=urllib.request.Request(base+name+'?audit='+stamp,headers={'User-Agent':'GunCat-art-acceptance'})
+              with urllib.request.urlopen(req,timeout=45) as r:return r.read()
+          manifest=json.loads(fetch('_build-evidence.json'))
+          print('LIVE_ART_SOURCE',manifest['sourceCommit'],flush=True)
+          assert manifest['verifiedSource']=='real-engine-not-qa-mock'
+          names=['index.html','js/index.js','js/guncat-game.js','assets/art/scene-floor.webp','assets/art/scene-water.webp','assets/art/bg-home.webp','assets/art/bg-workshop.webp','assets/art/frame-metal.webp','assets/art/frame-leather.webp','assets/art/button-gold.webp']
+          files={x['path']:x for x in manifest['files']}
+          for name in names:
+              data=fetch(name);assert len(data)==files[name]['bytes'];assert hashlib.sha256(data).hexdigest()==files[name]['sha256']
+          print('LIVE_FILE_HASHES_VERIFIED',len(names),flush=True)
+          def emit(name,pic):
+              buf=io.BytesIO();pic.convert('RGB').save(buf,'JPEG',quality=84,optimize=True)
+              print('REVIEW_IMAGE '+name+' '+base64.b64encode(buf.getvalue()).decode(),flush=True)
+          labels=['base','warehouse','weapons','upgrades','raid','combat-polish','bag','pause','success','failure']
+          sheet=Image.new('RGB',(1100,1020),'#102b32');draw=ImageDraw.Draw(sheet)
+          for i,name in enumerate(labels):
+              data=fetch('art-review/'+name+'-390x844.png');pic=Image.open(io.BytesIO(data)).convert('RGB')
+              if name in ['raid','bag','pause','upgrades']:
+                  detail=pic.copy();detail.thumbnail((480,1040),Image.Resampling.LANCZOS);emit(name,detail)
+              pic.thumbnail((210,475),Image.Resampling.LANCZOS)
+              x=(i%5)*220+5;y=(i//5)*510+25;sheet.paste(pic,(x,y));draw.text((x,y-20),name,fill='#ffe3a4')
+          emit('live-actual-screens',sheet)
+          for name in ['core-concept','services-concept']:
+              pic=Image.open(io.BytesIO(fetch('art-review/'+name+'.webp')));pic.thumbnail((1500,600),Image.Resampling.LANCZOS);emit(name,pic)
+          PY
