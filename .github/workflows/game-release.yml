@@ -38,7 +38,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: BaiMaGod/qiangshoumaomisoudache
-          ref: eed680b89390aabee615e9ad70fb3aef964399bc
+          ref: 4953aa34f3c260123be984fa5c53055aefdb9445
           fetch-depth: 0
           token: ${{ secrets.GUNCAT_SOURCE_READ_TOKEN }}
           path: private-game
@@ -100,8 +100,11 @@ jobs:
         working-directory: private-game
         shell: bash
         run: |
+          COLD_GATE_STATUS=0
+          GUNCAT_HEADED=1 xvfb-run -a -s '-screen 0 1920x1080x24' python tools/qa/cold-performance.py || COLD_GATE_STATUS=$?
           node tools/qa/render-profile.mjs
           GUNCAT_HEADED=1 xvfb-run -a -s '-screen 0 1920x1080x24' python tools/qa/render-profile.py
+          test "$COLD_GATE_STATUS" -eq 0
           node tools/dev/build-baseline.mjs
           GUNCAT_HEADED=1 xvfb-run -a -s '-screen 0 1920x1080x24' python tools/qa/capture-baseline.py
           GUNCAT_HEADED=1 xvfb-run -a -s '-screen 0 1920x1080x24' npm run release:smoke
