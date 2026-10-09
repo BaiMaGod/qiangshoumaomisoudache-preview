@@ -1,0 +1,45 @@
+name: Diagnose official LayaAir 3.4 empty template
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/laya-cli-diagnostics.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  official-template-control:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install the same official CLI 3.4.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://raw.githubusercontent.com/layabox/layaair-cli/master/install.sh -o "$RUNNER_TEMP/laya-install.sh"
+          bash "$RUNNER_TEMP/laya-install.sh"
+          echo "$HOME/.layaair" >> "$GITHUB_PATH"
+          "$HOME/.layaair/layaair" install 3.4.0
+      - name: Build an untouched official 2D empty project
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir cli-diagnostics
+          layaair --version=3.4.0 create CliControl -t '2D empty project' -p "$RUNNER_TEMP/cli-control" -s 2>&1 | tee cli-diagnostics/create.log
+          layaair --version=3.4.0 build web -p "$RUNNER_TEMP/cli-control/CliControl" -o "$RUNNER_TEMP/cli-control-web" 2>&1 | tee cli-diagnostics/build.log
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          text=Path('cli-diagnostics/build.log').read_text()
+          result={'project':'untouched official 2D empty template','version':'3.4.0','gameCodeIncluded':False,'buildExitCode':0,'matrixDiagnosticPresent':"reading 'matrix'" in text,'successReported':'result=Success' in text}
+          Path('cli-diagnostics/result.json').write_text(json.dumps(result,indent=2)+'\n')
+          print(json.dumps(result))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: official-laya-template-control
+          path: cli-diagnostics/
+          if-no-files-found: error
