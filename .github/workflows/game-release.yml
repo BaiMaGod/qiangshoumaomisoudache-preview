@@ -38,7 +38,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: BaiMaGod/qiangshoumaomisoudache
-          ref: 62e27896ca8c3ca6fff93ceae71bc003c2ee43e4
+          ref: 3a6f96f1daf95cff427155452cc3d2d8905912ac
           fetch-depth: 0
           token: ${{ secrets.GUNCAT_SOURCE_READ_TOKEN }}
           path: private-game
@@ -91,6 +91,13 @@ jobs:
           set -euo pipefail
           SOURCE_COMMIT="$(git rev-parse HEAD)"
           GITHUB_SHA="$SOURCE_COMMIT" npm run release:build
+      - name: Record official engine bytes
+        working-directory: private-game
+        run: |
+          mkdir -p qa-evidence/real-laya
+          cp .release-out/web/_build-evidence.json qa-evidence/real-laya/official-build-manifest.json
+          sha256sum .release-out/web/libs/*.js .release-out/web/js/index.js
+
       - name: Install Chromium QA dependencies
         shell: bash
         run: |
@@ -111,6 +118,17 @@ jobs:
           GUNCAT_HEADED=1 xvfb-run -a -s '-screen 0 1920x1080x24' python tools/qa/animation-real.py
           python tools/release/art-gallery.py
           npm run release:verify
+      - name: Retain official SDK probe (no game source)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: guncat-official-sdk-probe
+          path: |
+            private-game/.release-out/web/libs/
+            private-game/.release-out/web/js/index.js
+            private-game/.release-out/web/_build-evidence.json
+          if-no-files-found: error
+
       - name: Upload screenshot evidence (never upload source)
         if: always()
         uses: actions/upload-artifact@v4
