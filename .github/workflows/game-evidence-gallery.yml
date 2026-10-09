@@ -26,14 +26,28 @@ jobs:
           path: verified-package
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repository: BaiMaGod/qiangshoumaomisoudache-preview
-          run-id: 37812098367
+          run-id: 37877134902
       - uses: actions/download-artifact@v4
         with:
           name: guncat-real-laya-browser-qa
           path: original-evidence
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repository: BaiMaGod/qiangshoumaomisoudache-preview
-          run-id: 37812098367
+          run-id: 37877134902
+      - uses: actions/download-artifact@v4
+        with:
+          name: guncat-real-laya-browser-qa
+          path: framing-before
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: BaiMaGod/qiangshoumaomisoudache-preview
+          run-id: 37869962460
+      - uses: actions/download-artifact@v4
+        with:
+          name: guncat-real-laya-browser-qa
+          path: loot-layout-before
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: BaiMaGod/qiangshoumaomisoudache-preview
+          run-id: 37876142380
       - name: Verify exact previously tested game and attach original screenshots
         run: |
           mkdir web
@@ -43,30 +57,45 @@ jobs:
           import hashlib,json,shutil,html
           web=Path('web');ev=Path('original-evidence')
           m=json.loads((web/'_build-evidence.json').read_text())
-          assert m['sourceCommit']=='996c068a83be12771ea6e65a67ba32078b0c78e4'
-          assert m['browserSmokePassed'] is True and m['touchSmokePassed'] is True
+          assert m['sourceCommit']=='022f46fb56a3a7e45d3493885044037cee50446b'
+          assert m['browserSmokePassed'] is True and m['touchSmokePassed'] is True and m['bossDeepSmokePassed'] is True and m['movementPerformancePassed'] is True
+          for viewport in ['390x844','375x667','1440x900']:
+              boss=json.loads((ev/f'boss-route-{viewport}.json').read_text())
+              assert boss['status']=='passed' and set(boss['attacks'])=={'cone','rush'} and boss['rage'] and boss['lockedBeforeKill'] and boss['bossChestOpened'] and boss['deepExtraction']
+              assert boss['lootLayout']['playerClear'] and boss['lootLayout']['hudClear'] and len(boss['lootLayout']['cards'])>=1
           for f in m['files']:
               assert hashlib.sha256((web/f['path']).read_bytes()).hexdigest()==f['sha256'],f['path']
           perf=json.loads((ev/'performance.json').read_text())
           assert len(perf)==3 and all(v['rafP95Ms']<=33.5 for v in perf)
+          motion=json.loads((ev/'motion-performance.json').read_text())
+          assert len(motion)==3 and all(v['rafP95Ms']<=33.5 for v in motion)
+          mm={v['viewport']:v['rafP95Ms'] for v in motion}
           summary=json.loads((ev/'acceptance-summary.json').read_text())
           assert summary['status']=='passed' and summary['errors']==0
           dst=web/'screenshots';dst.mkdir()
           for f in ev.rglob('*'):
               if f.is_file() and f.suffix in ('.png','.json'):
                   target=dst/f.relative_to(ev);target.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(f,target)
+          iteration=dst/'iteration';iteration.mkdir()
+          for name in ['boss-cone-390x844.png','boss-rage-390x844.png']:
+              shutil.copyfile(Path('framing-before')/name,iteration/name)
+          shutil.copyfile(Path('loot-layout-before')/'boss-reward-375x667.png',iteration/'loot-cover-before-375x667.png')
           before=json.loads((ev/'before/performance.json').read_text())
           bm={p['viewport']:p['rafP95Ms'] for p in before}
-          rows=''.join(f"<tr><td>{p['viewport']}</td><td>{bm[p['viewport']]:.1f} ms</td><td>{p['rafP95Ms']:.1f} ms</td><td>通过</td></tr>" for p in perf)
+          rows=''.join(f"<tr><td>{p['viewport']}</td><td>{bm[p['viewport']]:.1f} ms</td><td>{p['rafP95Ms']:.1f} ms</td><td>{mm[p['viewport']]:.1f} ms</td><td>通过</td></tr>" for p in perf)
           sections=[]
-          states=[('首页','base'),('战斗','combat-polish'),('暂停','pause'),('背包','bag'),('撤离进度','extract-progress'),('成功结算','success'),('失败结算','failure'),('仓库','warehouse'),('军械库','weapons'),('出击','raid')]
+          states=[('首页','base'),('战斗','combat-polish'),('暂停','pause'),('背包','bag'),('撤离进度','extract-progress'),('成功结算','success'),('失败结算','failure'),('仓库','warehouse'),('军械库','weapons'),('出击','raid'),('持续移动','motion'),('拾取稀有度提示','pickup-tier'),('Boss守护箱锁定','boss-locked'),('扇形攻击预警','boss-cone'),('冲撞阶段','boss-rush'),('狂暴阶段','boss-rage'),('Boss战利品','boss-reward'),('后门撤离进度','deep-extract'),('深区结算','deep-success')]
           for name,key in states:
               cards=''.join(f'<figure><figcaption>{v}</figcaption><a href="{key}-{v}.png"><img loading="lazy" src="{key}-{v}.png" alt="{name} {v}"/></a></figure>' for v in ['390x844','375x667','1440x900'])
               sections.append(f'<section><h2>{name}</h2><div class="grid">{cards}</div></section>')
           comparison=''.join(f'<figure><figcaption>{label}</figcaption><a href="{path}"><img src="{path}" alt="{label}"></a></figure>' for label,path in [('原版首页','before/base-390x844.png'),('改版首页','base-390x844.png'),('原版进行中','before/raid-390x844.png'),('改版进行中','raid-390x844.png')])
-          page='''<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>枪手猫咪 · 品质升级实拍验收</title><style>body{margin:0;background:#0e2329;color:#efe3c1;font:16px/1.7 system-ui,sans-serif}main{max-width:1200px;margin:auto;padding:24px}h1,h2{color:#ffda91}a{color:#b3e2c7}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px}figure{margin:0;background:#173b40;padding:12px;border-radius:12px}figcaption{margin-bottom:8px;font-weight:bold}img{display:block;max-width:100%;max-height:640px;margin:auto;height:auto}table{border-collapse:collapse}td,th{border:1px solid #638477;padding:8px 16px}.note{background:#244747;padding:18px;border-radius:12px}section{margin:34px 0}</style><main><h1>枪手猫咪 · 品质升级实拍验收</h1><p>2026-10-08 · 官方 LayaAir 3.4.0 · 原始浏览器截图，点击可查看完整尺寸。</p><p><a href="../">进入试玩</a> · <a href="quality-report.md">完整修改与验收报告</a> · <a href="https://github.com/BaiMaGod/qiangshoumaomisoudache-preview/actions/runs/37812098367">原构建/操作日志与完整证据下载</a></p><div class="note">38项回归通过；390×844、375×667、1440×900完成实际输入的核心流程；两手机尺寸触摸松手/取消通过；浏览器JS与资源错误为0。音效试听、实体手机、深区Boss与长局压力待验。CLI资产准备阶段仍有内部matrix诊断，导出成功且包完整性和运行检查通过。尚未达到全部商业上线验收。</div><h2>同环境rAF帧间隔</h2><p>Ubuntu/Chromium/SwiftShader，DPR=2，每视口180帧；预设P95预算33.5ms。该代理不是实体手机GPU时间。</p><table><tr><th>视口</th><th>原版P95</th><th>改版P95</th><th>预算</th></tr>'''+rows+'</table><h2>同视口前后对比</h2><div class="grid">'+comparison+'</div>'+''.join(sections)+'</main></html>'
+          framing=''.join(f'<figure><figcaption>{label}</figcaption><a href="{path}"><img src="{path}" alt="{label}"></a></figure>' for label,path in [('本轮修复前：顶部战斗被HUD遮挡','iteration/boss-cone-390x844.png'),('当前：顶部取景留边','boss-cone-390x844.png')])
+          loot_compare=''.join(f'<figure><figcaption>{label}</figcaption><a href="{path}"><img src="{path}" alt="{label}"></a></figure>' for label,path in [('首次自动化通过后实拍发现：奖励卡遮住猫咪','iteration/loot-cover-before-375x667.png'),('当前：奖励卡在角色对侧并保持信息可读','boss-reward-375x667.png')])
+          page='''<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>枪手猫咪 · 品质升级实拍验收</title><style>body{margin:0;background:#0e2329;color:#efe3c1;font:16px/1.7 system-ui,sans-serif}main{max-width:1200px;margin:auto;padding:24px}h1,h2{color:#ffda91}a{color:#b3e2c7}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px}figure{margin:0;background:#173b40;padding:12px;border-radius:12px}figcaption{margin-bottom:8px;font-weight:bold}img{display:block;max-width:100%;max-height:640px;margin:auto;height:auto}table{border-collapse:collapse}td,th{border:1px solid #638477;padding:8px 16px}.note{background:#244747;padding:18px;border-radius:12px}section{margin:34px 0}</style><main><h1>枪手猫咪 · 品质升级实拍验收</h1><p>2026-10-09 · 官方 LayaAir 3.4.0 · 原始浏览器截图，点击可查看完整尺寸。</p><p><a href="../?v=022f46fb56a3">进入试玩</a> · <a href="quality-report.md">完整修改与验收报告</a> · <a href="https://github.com/BaiMaGod/qiangshoumaomisoudache-preview/actions/runs/37877134902">原构建/操作日志与完整证据下载</a></p><div class="note">43项回归通过；390×844、375×667、1440×900完成实际输入的核心流程；两手机尺寸触摸松手/取消通过；浏览器JS与资源错误为0。三视口原始手枪完成Boss扇形/冲撞/狂暴、击杀解锁守护箱及后门撤离。音效试听、实体手机与长局压力待验。CLI资产准备阶段仍有内部matrix诊断，导出成功且包完整性和运行检查通过。尚未达到全部商业上线验收。</div><h2>同环境rAF帧间隔</h2><p>Ubuntu/Chromium/SwiftShader，DPR=2，静止每视口180帧、实际持续走位120帧；两种场景预设P95预算均33.5ms。该代理不是实体手机GPU时间。</p><table><tr><th>视口</th><th>原版P95</th><th>当前静止P95</th><th>当前持续移动P95</th><th>预算</th></tr>'''+rows+'</table><h2>同视口前后对比</h2><div class="grid">'+comparison+'</div><h2>本轮深区取景修复前后</h2><p>同390×844视口的真实扇形预警；战斗帧、血量与角色位置不同，按遮挡和可读性逐项复核，不作为像素回归阈值。</p><div class="grid">'+framing+'</div><h2>短屏奖励卡遮挡修复</h2><p>同375×667视口原始奖励帧，卡片和角色不再相交；实际状态不同，不作为像素阈值。</p><div class="grid">'+loot_compare+'</div>'+''.join(sections)+'</main></html>'
           (dst/'index.html').write_text(page)
-          provenance={'kind':'original-unedited-screenshots-from-verified-build','sourceCommit':m['sourceCommit'],'originalRun':37812098367,'gameFileHashesUnchanged':True,'manualVisualReview':'7-critical-original-PNGs-reviewed-pass','reviewedImages':[{"name":"base-390x844.png","sha256":"eb023e6362b115b867e464ef969ee693ab94e39d3be02feb94a23f9a5b85b637","status":"pass","notes":"首页标题、插画、任务与主按钮清晰且在视口内"},{"name":"raid-390x844.png","sha256":"99ce93d452598ebf1fb8e85d206cf5181e8da83401108612acff5e35839d044c","status":"pass","notes":"角色清晰、HUD与摇杆可见、相机无露黑、墙体在边界内"},{"name":"pause-375x667.png","sha256":"41a495e566c84365d3cd4e6ec527a87dbf27fb2343745925d989ec3702315887","status":"pass","notes":"短屏暂停内容与继续/设置/放弃按钮完整"},{"name":"success-375x667.png","sha256":"a8c2d692488432f412ed00e4a89e8691c272e811e05916602b75669f95308549","status":"pass","notes":"短屏结果物资估值与币区分明确，操作按钮完整"},{"name":"failure-375x667.png","sha256":"f47cc3433093d02e8dd786866479a01dabc5f2017f27bf066f7a2d551220692a","status":"pass","notes":"短屏失败信息和重开按钮完整"},{"name":"combat-polish-390x844.png","sha256":"70c58cfe066f617458c34be60cd79b74c278fa7e32e3bd8c65c34b42d857131b","status":"pass","notes":"战斗角色、敌人、宝箱、撤离按钮可见，墙体纹理无外溢"},{"name":"combat-polish-1440x900.png","sha256":"fcc208900ec40fca60d05e48678d85d3a7e5226f45243ff8f42f8e6381ff0f49","status":"pass","notes":"桌面竖屏舞台居中、未旋转，HUD和控制与画布同框"}],'originalScreenshotHashes':{str(f.relative_to(dst)):hashlib.sha256(f.read_bytes()).hexdigest() for f in dst.rglob('*.png')}}
+          provenance={'kind':'original-unedited-screenshots-from-verified-build','sourceCommit':m['sourceCommit'],'originalRun':37877134902,'gameFileHashesUnchanged':True,'visualReview':'17-critical-original-PNGs-inspected-pass','reviewedBy':'assistant inspecting original PNGs','reviewedImages':[{"name":"base-390x844.png","sha256":"eb023e6362b115b867e464ef969ee693ab94e39d3be02feb94a23f9a5b85b637","status":"pass","notes":"首页插画、标题、钱包、任务和主按钮清晰，无裁切"},{"name":"raid-390x844.png","sha256":"baa3e0379a27c42ca8f7d019df1d56de3b9f9a5324ece168d41305cb0b0e9ab1","status":"pass","notes":"角色正向清晰，HUD、指引与摇杆对齐，治疗图标保持比例"},{"name":"pause-375x667.png","sha256":"bba0a3833a102e8100d83b24f29481ad793d68679fd47fef3d94ff2cc21e1578","status":"pass","notes":"短屏暂停、设置、继续与放弃按钮完整，风格统一"},{"name":"success-375x667.png","sha256":"d319b7460c476f954738e619533418d3ce795ea5a662878527d22d23bbdc06bc","status":"pass","notes":"物资估值与币区分，撤离点与操作按钮清楚"},{"name":"failure-375x667.png","sha256":"f47cc3433093d02e8dd786866479a01dabc5f2017f27bf066f7a2d551220692a","status":"pass","notes":"失败原因、永久资产提示、重开按钮完整"},{"name":"combat-polish-390x844.png","sha256":"c0f18dec0c8957f650204e5701ab57102c6554aae4fdd63099607164231f128d","status":"pass","notes":"猫咪、敌人、宝箱和出口可读，墙体纹理限于障碍范围"},{"name":"combat-polish-1440x900.png","sha256":"bbd2be9118119011128520a591c5b02d48c32e3b5634b3c1d219f9ebf21f8a3a","status":"pass","notes":"桌面竖屏舞台居中，无旋转，UI与画布对齐"},{"name":"boss-cone-390x844.png","sha256":"5e09da67c331a8bf64222b29eefebf196a50918832aac138cb4751f421c4a7b1","status":"pass","notes":"Boss头像、血条、扇形状态和红区清楚，关键角色低于HUD"},{"name":"boss-rush-390x844.png","sha256":"40c69d687a901f6c0777c72d1a797b6f60a22e4811b248322317587cd67a228d","status":"pass","notes":"冲撞阶段读数和角色清楚，效果不遮住主HUD"},{"name":"boss-rage-375x667.png","sha256":"62dccbba15b5be35e3e9b682b6612bbdc917d68226917769c5240a8b4719923f","status":"pass","notes":"短屏狂暴配色、血量与Boss/玩家主体清楚"},{"name":"boss-reward-375x667.png","sha256":"9dfb987fc2ca386ad052ebf259884a35984c886fc96e7a7ad07ed7901d5cc29d","status":"pass","notes":"双奖励卡位于角色对侧，稀有度、物品、估值可读，猫咪完整"},{"name":"deep-success-375x667.png","sha256":"9ea8d54e54a20b67191febb42b6d912d04cbab3a77565d4d333a22ea27df2622","status":"pass","notes":"后门撤离点、奖励、物资等级和结果按钮完整"},{"name":"boss-rush-1440x900.png","sha256":"1bc222a8555c13c9c1586feeb921982011e5d1cf06c80a72b2d2245af9257e7e","status":"pass","notes":"桌面Boss阶段、舞台与HUD清楚"},{"name":"deep-extract-390x844.png","sha256":"d66bcb09d883931f21c5843a39bfc2f117b56fa3a43b467b8edab72c1a1c463b","status":"pass","notes":"后门绿圈、已开守护箱和进度条清楚，普通提示与拾取卡隐藏"},{"name":"pickup-tier-375x667.png","sha256":"171c31b3769d42f41cee5406cd795d589d376065ac1829dc1c3b7283e69c712f","status":"pass","notes":"短屏拾取等级、名称与估值清楚，卡片避开角色和HUD"},{"name":"pickup-tier-390x844.png","sha256":"cda7919b637f0cb7b91a225e1056eccf289a3a90241ff2722829db9302280ab4","status":"pass","notes":"长屏拾取提示与搜刮指引清楚，不遮挡猫咪"},{"name":"motion-375x667.png","sha256":"d4fc0b94e65cd4656eae74cb799136c9d860803b1bbea5c2483f82a385bdd667","status":"pass","notes":"持续走位时猫咪、控制、HUD清楚，相机无露黑"}],'comparisonSources':{'before':'original c406cc3037852ce099d5f4e614583bd4350372b2','iteration/boss':'native run 37869962460','iteration/loot-cover-before-375x667.png':'native run 37876142380 source 88497620ff83776c7ddbd38f7099511c9e8c6f9b'},'originalScreenshotHashes':{str(f.relative_to(dst)):hashlib.sha256(f.read_bytes()).hexdigest() for f in dst.rglob('*.png')}}
+          for review in provenance['reviewedImages']:
+              assert hashlib.sha256((ev/review['name']).read_bytes()).hexdigest()==review['sha256'],review['name']
           (dst/'provenance.json').write_text(json.dumps(provenance,indent=2))
           print('VERIFIED_GAME_HASHES_UNCHANGED',len(m['files']),'screenshots',len(provenance['originalScreenshotHashes']))
           PY
@@ -75,15 +104,26 @@ jobs:
           cat > web/screenshots/quality-report.md <<'REPORT'
           # 枪手猫咪搜打撤 · 品质升级验收
           
-          2026-10-08，已实装并通过浏览器范围验收、发布。实体手机、人工听感与长局仍待验，不能宣称全部商业上线品质完成。
+          2026-10-09，已实装并通过浏览器范围验收、发布。实体手机、人工听感与长局仍待验，不能宣称全部商业上线品质完成。
           
-          测试源码：996c068a83be12771ea6e65a67ba32078b0c78e4。官方构建与操作记录：https://github.com/BaiMaGod/qiangshoumaomisoudache-preview/actions/runs/37812098367 。本页重发布该已验证包并附原始截图，原50个构建文件的SHA256保持一致。
+          测试源码：022f46fb56a3a7e45d3493885044037cee50446b。官方构建与操作记录：https://github.com/BaiMaGod/qiangshoumaomisoudache-preview/actions/runs/37877134902 。本页重发布该已验证包并附原始截图，原50个构建文件的SHA256保持一致。
           
           ## 项目审查与评分
           
-          项目采用 LayaAir 3.4 + TypeScript + WebGL Sprite，DOM叠层UI。domain/map/combat分离规则、地图和战斗几何，Main组织输入、循环和显示。原仓库没有图片/音频高品质素材，使用程序占位；实际截图确认角色横转、纯色场景、桌面旋转后UI错位。规则、地图、战斗几何三个模块的Git内容和blob散列与原版c406cc3037852ce099d5f4e614583bd4350372b2完全一致。
+          项目采用 LayaAir 3.4 + TypeScript + WebGL Sprite，DOM叠层UI。domain/map/combat分离规则、地图和战斗几何，Main组织输入、循环和显示。原仓库没有图片/音频高品质素材，使用程序占位；实际截图确认角色横转、纯色场景、桌面旋转后UI错位。domain与combat的Git内容和blob散列保留原版c406cc3037852ce099d5f4e614583bd4350372b2；map新增只读建议指引函数，原地图坐标、碰撞与可达性函数不变。
           
-          以下满分5，为人工视觉审查意见，不是上线认证。原版/本轮：角色道具1/3.5（P0，仍单姿态）；场景1/3（P0，地面重复明显）；UI2/4（P0，首页、暂停、结果统一）；动画特效2/3.5（P1，分级火花与反馈，缺少多帧动作）；操作反馈2/4（P1，触摸取消和重开）；音效未试听不评分；性能以实测代理数据说明，不赋真机分。
+          以下满分5，为同视口原始截图的视觉审查意见，不是上线认证；音效与实体手机性能没有人工/真机证据，因此不打分。
+          
+          | 项目 | 原版 | 本轮 | 优先级与具体问题 |
+          |---|---:|---:|---|
+          | 角色与道具 | 1 | 3.5 | P0占位/横转已修；P1多帧动作、独立霰弹枪与物资图标待做 |
+          | 场景 | 1 | 3 | P0露黑/纹理外溢已修；P1地面和墙体重复、材质衔接待精修 |
+          | UI/UX | 2 | 4 | P0方向错位、Boss/奖励/撤离遮挡已修；P2非撤离受击提示语义待修 |
+          | 动画与特效 | 2 | 3.5 | P1射击/命中/击杀与奖励分级已加；正式多帧动作尚缺 |
+          | 操作反馈 | 2 | 4 | P0触摸取消、复位与重开已验；P1实体设备触觉尚待验 |
+          | 声音 | 未验 | 未验 | P1真人试听、耳机/扬声器混音；当前无背景音乐 |
+          | 性能 | 见JSON | 见JSON | P0实测缓存移动重绘已修；P1真机长局内存和热稳定性待验 |
+          
           
           ## 修改清单
           
@@ -101,35 +141,55 @@ jobs:
           
           ## 性能
           
-          在修改前设定180帧rAF P95≤33.5ms，未降低预算。最终三视口P95均33.4ms，实际数据和原版同环境记录在performance.json与before/performance.json。Ubuntu Runner、带Xvfb Chromium、DPR=2、ANGLE/SwiftShader软件渲染；rAF不等于GPU或实体手机帧率。
+          在修改前设定180帧rAF P95≤33.5ms，未降低预算。最终静止和持续移动P95均通过33.5ms预算，各视口实际值见performance.json、motion-performance.json，原版同环境记录见before/performance.json。Ubuntu Runner、带Xvfb Chromium、DPR=2、ANGLE/SwiftShader软件渲染；rAF不等于GPU或实体手机帧率。
           
-          实测早期改版P95约100ms，静态地形缓存后50ms，修正官方导出的2D多重采样设置后达标。透明素材保留平滑alpha边缘，DOM文本清晰。地形只构建一次、纹理共享；效果数组原地压缩；火花24、弹道35、浮字18封顶；HUD节点复用，音频节点结束后断开。没有降低游戏模拟步长或改变移动/判定来提分。
+          实测早期改版P95约100ms，静态地形缓存后50ms，修正官方导出的2D多重采样设置后达标。透明素材保留平滑alpha边缘，DOM文本清晰。地形只构建一次、纹理共享；移动独立相机容器避免缓存反复重绘；效果数组原地压缩；火花24、弹道35、浮字18封顶；HUD节点复用，音频节点结束后断开。没有降低游戏模拟步长或改变移动/判定来提分。
           
           ## 实际测试
           
-          官方LayaAir CLI 3.4.0 Web构建和静态完整性检查、TS检查、38/38原规则/地图/战斗/发布门禁回归通过。
+          官方LayaAir CLI 3.4.0 Web构建和静态完整性检查、TS检查、43/43规则/地图/建议指引/战斗/发布门禁回归通过。
+          
+          发布先在独立新局持续按住W采样120帧，检查真实坐标移动及P95≤33.5ms；截图/trace在采样之后记录。静止180帧门禁也保留，数据见motion-performance.json与performance.json。
           
           三视口真实点击开始→暂停/继续及设置→键盘走位开箱→背包→自动射击/命中/击杀→主动3秒撤离→成功→仓库出售→武器解锁装备→存档重载→新局→主动放弃失败页→再次出击和连续3次重开，均通过，0浏览器JS/HTTP/请求失败。没有使用QA假引擎或局内传送。仅武器购买环节在已结算基地给永久存档提供确定性资源。
           
           两手机尺寸用Chromium原生触摸模拟拖摇杆、松手和touchCancel。观察真实手势结束后等待HUD只读坐标刷新，再以原4px漂移上限检查停止；未放宽停止标准。原生事件记录见touch-events-*.json。多次重开检查粒子与弹道回收。
           
+          ## 2026-10-09 深区继续优化
+
+          - 使用已有医疗包图标补充治疗按钮；已有箱堆素材以原宽高比置于障碍范围内，不增加障碍或每帧绘制。
+          - 拾取卡片、背包/仓库/结算的文字等级和配色区分普通、稀有、史诗、传说；事件分级短音与光圈仍受原效果上限约束。
+          - 新增只读搜刮/撤离建议：跳过活Boss锁箱，并按携带价值、负重与剩余时间提示最近撤离；指引不替玩家开启撤离、不改变掉落或胜负。
+          - 暂停按钮移至顶部独立位置，为生命与时限保留空间，避免覆盖Boss信息。
+          - Boss使用原有高清监工头像、连续血条与狂暴配色，按真实锁定的攻击状态展示扇形/冲撞躲避方向和倒计时；纯显示，不改变伤害和判定。
+          - 深区实拍发现顶部HUD遮挡角色和预警；增加仅在原地图外的384单位装饰留边，相机允许在顶部露出留边。继续使用已有地面和墙体素材并缓存，地图边界、碰撞、AI和撤离坐标保持不变。
+          - 自动化流程通过后的原始PNG复核仍发现短屏Boss奖励双卡遮挡猫咪：把卡片缩为角色对侧栏，保留稀有度文字、名称和估值；撤离读条期间隐藏拾取卡。增加基于实际DOM与画布几何的猫咪/HUD非重叠断言，三视口重新执行原完整门禁。
+          - 新图复核发现撤离进度压住普通提示；读条期间隐藏普通提示，并验证近/深两撤离点都没有重叠。中断后的受击/取消消息仍恢复显示。
+          - 成功结算明确记录实际撤离点。新增只读状态便于验证真实Boss血量、攻击类型和守护箱；发布包没有局内写状态或传送入口。
+          - 原始手枪、无基地资源夹具、正常西侧通道走位，三视口实际验证：活着时锁箱，扇形重击、直线冲撞、半血狂暴、真实击杀、开守护箱、后门主动3秒撤离。使用真实治疗按钮，观察效果与弹道封顶。原核心全流程和双手机真实触摸门禁继续执行。
+          - 修复持续移动卡顿：官方3.4对缓存Sprite自身位置变化标记缓存重绘。将缓存地形/顶部装饰保持固定位置，由独立相机容器移动。原模拟步长与移动规则不变。
+          - 同一官方SDK的诊断A/B中，直接移动缓存地形的持续移动P95为400–550ms，父容器相机方案为33.4ms。诊断只作优化依据，最终以本页新官方构建的motion-performance.json重新验收。诊断：https://github.com/BaiMaGod/qiangshoumaomisoudache-preview/actions/runs/37872135909 。
+          - 新增发布门禁要求三视口持续移动120帧P95≤33.5ms及深区Boss流程通过，43项回归通过；原静止180帧、双手机触摸和全流程门禁继续保留。
+          - 游戏脚本URL包含编译内容指纹，确保更新后请求对应版本；包散列核验后才部署。
+
           ## 截图比较与未解决项
           
           提供原版同视口截图和改版完整流程实拍；每张图片保持原始像素。用户上传图是原版问题画面，没有目标概念图，因此按预先制定的文字特征及原版比较，不报告目标像素相似度通过。
           
           - Android/iOS实体手机兼容性、发热、刘海安全区、长局内存和触觉体验待验。Chromium手机模拟不等于真机。
           - 人工音效试听、耳机/扬声器响度与专业混音待验。
+          - 非撤离时受击提示仍沿用“撤离读条已取消”的原文字，语义可继续精修；实际伤害与撤离取消判定保持原规则。
           - 单姿态角色缺少正式多帧动作；霰弹枪共用冲锋枪视觉，物资采用通用图标，地面重复纹理仍可精修。
-          - 本轮核心流程以近撤线路为主，Boss深区与长局压力未完成专门人工游玩。
-          - CLI3.4.0资产准备阶段打印NoRenderPrimitiveDataHandle.inheriteRenderData的matrix TypeError，随后退出0并报告Build end, result=Success；包完整性和实际浏览器流程通过。CLI内部诊断尚未消除。
-          - 本地工作环境连接中断，下载版报告和本地截图整理未能完成；原始截图、机器证据和报告已通过站点与Actions保留。7张关键原始PNG已人工复核通过：长屏首页/出击/战斗、短屏暂停/成功/失败、桌面战斗；完整状态和原图散列在provenance.json。其余流程截图保留在线，不宣称全部逐帧复核。
+          - Boss深区已在三视口通过真实输入专门验收；Android/iOS长局压力仍待验。
+          - CLI3.4.0资产准备阶段打印NoRenderPrimitiveDataHandle.inheriteRenderData的matrix TypeError，随后退出0并报告Build end, result=Success；包完整性和实际浏览器流程通过。CLI内部诊断尚未消除。未加入任何游戏代码的官方3.4.0空模板同样复现该诊断并成功导出；对照构建：https://github.com/BaiMaGod/qiangshoumaomisoudache-preview/actions/runs/37870803510 。没有修改或屏蔽引擎错误。
+          - 实际截图逐张复核记录见provenance.json；其余流程截图保留在线，不宣称全部逐帧复核。
           REPORT
       - name: Retain exact PNG evidence for independent visual review
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
-            const selected = ['base-390x844.png','raid-390x844.png','pause-375x667.png','success-375x667.png','failure-375x667.png','combat-polish-390x844.png','combat-polish-1440x900.png','before/raid-390x844.png'];
+            const selected = ["base-390x844.png","raid-390x844.png","pause-375x667.png","success-375x667.png","failure-375x667.png","combat-polish-390x844.png","combat-polish-1440x900.png","boss-cone-390x844.png","boss-rush-390x844.png","boss-rage-375x667.png","boss-reward-375x667.png","deep-success-375x667.png","boss-rush-1440x900.png","deep-extract-390x844.png","pickup-tier-375x667.png","pickup-tier-390x844.png","motion-375x667.png"];
             const { owner, repo } = context.repo;
             const ref = await github.rest.git.getRef({ owner, repo, ref: 'heads/main' });
             const base = await github.rest.git.getCommit({ owner, repo, commit_sha: ref.data.object.sha });
@@ -146,7 +206,7 @@ jobs:
               }
               review.push({ name, originalBytes: bytes.length, sha256: require('crypto').createHash('sha256').update(bytes).digest('hex'), parts });
             }
-            const manifest = await github.rest.git.createBlob({ owner, repo, content: JSON.stringify({ sourceCommit: '996c068a83be12771ea6e65a67ba32078b0c78e4', originalRun: 37812098367, encoding: 'lossless original PNG base64 split for UTF-8 retrieval', images: review }), encoding: 'utf-8' });
+            const manifest = await github.rest.git.createBlob({ owner, repo, content: JSON.stringify({ sourceCommit: '022f46fb56a3a7e45d3493885044037cee50446b', originalRun: 37877134902, encoding: 'lossless original PNG base64 split for UTF-8 retrieval', images: review }), encoding: 'utf-8' });
             entries.push({ path: 'qa-review/manifest.json', mode: '100644', type: 'blob', sha: manifest.data.sha });
             const tree = await github.rest.git.createTree({ owner, repo, base_tree: base.data.tree.sha, tree: entries });
             const commit = await github.rest.git.createCommit({ owner, repo, message: 'docs: retain exact final acceptance PNGs for visual review', tree: tree.data.sha, parents: [ref.data.object.sha] });
