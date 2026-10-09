@@ -26,7 +26,7 @@ jobs:
           from PIL import Image,ImageDraw
           from playwright.sync_api import sync_playwright
           base='https://baimagod.github.io/qiangshoumaomisoudache-preview/'
-          expected='1803190bf909c078d1858e61a9defbb02a795222'
+          expected='0e564fc6d4b9c33f75d7d45b8d89517d9f9b5556'
           def fetch(name):
               req=urllib.request.Request(base+name+'?audit='+str(time.time_ns()),headers={'User-Agent':'GunCat-art-acceptance'})
               with urllib.request.urlopen(req,timeout=45) as r:return r.read()
@@ -38,7 +38,7 @@ jobs:
           print('LIVE_ART_SOURCE',manifest['sourceCommit'],flush=True)
           assert manifest['verifiedSource']=='real-engine-not-qa-mock'
           files={x['path']:x for x in manifest['files']}
-          names=['index.html','js/index.js','js/guncat-game.js','assets/art/scene-floor.webp','assets/art/scene-water.webp','assets/art/bg-home.webp','assets/art/bg-workshop.webp','assets/art/frame-metal.webp','assets/art/frame-leather.webp','assets/art/button-gold.webp']
+          names=['index.html','js/index.js','js/guncat-game.js','assets/art/scene-floor.webp','assets/art/scene-water.webp','assets/art/bg-home.webp','assets/art/bg-workshop.webp','assets/art/frame-metal.webp','assets/art/frame-leather.webp','assets/art/button-gold.webp','assets/art/cat-walk.webp',*[f'assets/art/cat-walk-{i}.webp' for i in range(6)],'art-review/animation-summary.json',*[f'art-review/battle-{gun}-390x844.webm' for gun in ['pistol','smg','shotgun']]]
           for name in names:
               data=fetch(name);assert len(data)==files[name]['bytes'];assert hashlib.sha256(data).hexdigest()==files[name]['sha256']
           print('LIVE_FILE_HASHES_VERIFIED',len(names),flush=True)
@@ -52,6 +52,8 @@ jobs:
                   errors=[];page=browser.new_page(viewport={'width':w,'height':h},device_scale_factor=2)
                   page.on('pageerror',lambda err:errors.append(str(err)))
                   page.on('requestfailed',lambda req:errors.append(req.url))
+                  page.on('console',lambda msg:errors.append(msg.text) if msg.type=='error' else None)
+                  page.on('response',lambda res:errors.append(f'{res.status} {res.url}') if res.status>=400 else None)
                   page.goto(base+'?v='+expected,wait_until='networkidle',timeout=45000)
                   page.get_by_role('button',name='开始出击',exact=True).wait_for(timeout=20000)
                   shots=[]
@@ -66,15 +68,22 @@ jobs:
                   page.get_by_role('button',name='开始出击',exact=True).click()
                   page.get_by_text('HP 100/100',exact=True).wait_for()
                   page.wait_for_timeout(300);snap('raid')
+                  root_ui=page.locator('#guncat-root');motion_ui=page.locator('#guncat-motion-state')
+                  before=float(root_ui.get_attribute('data-world-x'));page.keyboard.down('d')
+                  frames=page.evaluate("""()=>new Promise(resolve=>{const frames=new Set();let n=0;function f(){frames.add(document.querySelector('#guncat-motion-state').dataset.actorArt);if(++n<75)requestAnimationFrame(f);else resolve([...frames]);}requestAnimationFrame(f);})""")
+                  page.keyboard.up('d');assert set(f'cat-walk-{i}' for i in range(6))<=set(frames),frames
+                  assert float(root_ui.get_attribute('data-world-x'))-before>70
+                  page.wait_for_function("document.querySelector('#guncat-motion-state').dataset.actorState==='idle'")
+                  snap('walk');print('LIVE_SIX_FRAME_WALK_PASS',w,h,frames,flush=True)
                   if w==1440:
                       path=out/'desktop-full.png';page.screenshot(path=str(path))
                       pic=Image.open(path);pic.thumbnail((1200,750),Image.Resampling.LANCZOS);emit('desktop-full',pic)
-                  page.get_by_role('button',name='暂停',exact=True).click();snap('pause')
+                  page.get_by_role('button',name='暂停',exact=True).click();page.wait_for_timeout(160);frozen=motion_ui.get_attribute('data-actor-art');xy=(root_ui.get_attribute('data-world-x'),root_ui.get_attribute('data-world-y'));page.wait_for_timeout(300);assert frozen==motion_ui.get_attribute('data-actor-art');assert xy==(root_ui.get_attribute('data-world-x'),root_ui.get_attribute('data-world-y'));snap('pause')
                   page.get_by_role('button',name='继续游戏',exact=True).click()
                   page.get_by_role('button',name='背包',exact=True).click();snap('bag')
                   assert page.locator('.gc-slot').count()==12
                   assert not errors,errors
-                  sheet=Image.new('RGB',(1100,500),'#102b32');draw=ImageDraw.Draw(sheet)
+                  sheet=Image.new('RGB',(1320,500),'#102b32');draw=ImageDraw.Draw(sheet)
                   for i,(name,path) in enumerate(shots):
                       pic=Image.open(path).convert('RGB');pic.thumbnail((210,460),Image.Resampling.LANCZOS)
                       sheet.paste(pic,(i*220+5,25));draw.text((i*220+5,5),name,fill='#ffe3a4')
@@ -82,6 +91,7 @@ jobs:
                   print('LIVE_VIEWPORT_REVIEW',w,h,page.locator('#guncat-root').bounding_box(),flush=True)
                   page.close()
               browser.close()
+          (out/'live-audit.json').write_text(json.dumps({'source':expected,'filesVerified':len(names),'viewports':['375x667','1440x900'],'sixFrameWalk':True,'pauseAndBag':True,'errors':0},indent=2)+'\n')
           os.set_blocking(1,True)
           for name,pic in pending:
               buf=io.BytesIO();pic.convert('RGB').save(buf,'JPEG',quality=84,optimize=True)
