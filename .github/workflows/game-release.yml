@@ -1,4 +1,4 @@
-# Preview release: concept implementation V3: prebaked ground and renderer cost evidence; publish after official SDK and three-viewport QA.
+# Preview release: concept implementation V3: static harbor background and unchanged renderer budget; publish after official SDK and three-viewport QA.
 name: Build private GunCat with LayaAir 3.4 and publish Pages
 on:
   workflow_dispatch:
@@ -38,7 +38,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: BaiMaGod/qiangshoumaomisoudache
-          ref: ecd0ffb1cb1aa484b9071a183f4b907a13f8b915
+          ref: cdfa69a15972a7be9b0ddf37a51c47b10b7340b9
           fetch-depth: 0
           token: ${{ secrets.GUNCAT_SOURCE_READ_TOKEN }}
           path: private-game
