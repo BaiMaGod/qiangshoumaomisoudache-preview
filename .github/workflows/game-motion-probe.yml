@@ -33,7 +33,7 @@ jobs:
         working-directory: private-game
         shell: bash
         run: |
-          npm ci --no-audit --no-fund
+          npm install --no-audit --no-fund
           mkdir "$RUNNER_TEMP/verified-sdk"
           tar -xf ../verified-package/artifact.tar -C "$RUNNER_TEMP/verified-sdk"
           node tools/dev/build-using-sdk.mjs "$RUNNER_TEMP/verified-sdk"
@@ -43,10 +43,6 @@ jobs:
         working-directory: private-game
         shell: bash
         run: |
-          cat > "$RUNNER_TEMP/parent-variant.mjs" <<'JS'
-          import {readFileSync,writeFileSync,cpSync,mkdirSync} from 'node:fs';
-          import {bundleGame} from process.env.BUNDLE_MODULE;
-          JS
           node --input-type=module <<'JS'
           import {readFileSync,writeFileSync,cpSync,mkdirSync} from 'node:fs';
           const s=readFileSync('src/Main.ts','utf8');
