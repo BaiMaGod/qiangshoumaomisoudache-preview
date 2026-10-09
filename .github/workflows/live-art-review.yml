@@ -21,7 +21,7 @@ jobs:
       - name: Verify accepted live bytes and review phone and desktop
         run: |
           xvfb-run -a -s '-screen 0 1920x1080x24' python - <<'PY'
-          import base64,hashlib,io,json,time,urllib.request
+          import base64,hashlib,io,json,time,urllib.request,os
           from pathlib import Path
           from PIL import Image,ImageDraw
           from playwright.sync_api import sync_playwright
@@ -43,9 +43,9 @@ jobs:
               data=fetch(name);assert len(data)==files[name]['bytes'];assert hashlib.sha256(data).hexdigest()==files[name]['sha256']
           print('LIVE_FILE_HASHES_VERIFIED',len(names),flush=True)
           out=Path('live-art-review');out.mkdir(exist_ok=True)
+          pending=[]
           def emit(name,pic):
-              buf=io.BytesIO();pic.convert('RGB').save(buf,'JPEG',quality=84,optimize=True)
-              print('REVIEW_IMAGE '+name+' '+base64.b64encode(buf.getvalue()).decode(),flush=True)
+              pending.append((name,pic.copy()))
           with sync_playwright() as p:
               browser=p.chromium.launch(headless=False,args=['--no-sandbox'])
               for w,h in [(375,667),(1440,900)]:
@@ -82,6 +82,13 @@ jobs:
                   print('LIVE_VIEWPORT_REVIEW',w,h,page.locator('#guncat-root').bounding_box(),flush=True)
                   page.close()
               browser.close()
+          os.set_blocking(1,True)
+          for name,pic in pending:
+              buf=io.BytesIO();pic.convert('RGB').save(buf,'JPEG',quality=84,optimize=True)
+              payload=base64.b64encode(buf.getvalue()).decode()
+              for offset in range(0,len(payload),8192):
+                  print('REVIEW_IMAGE_CHUNK '+name+' '+str(offset)+' '+payload[offset:offset+8192],flush=True)
+              print('REVIEW_IMAGE_END '+name+' '+str(len(payload))+' '+hashlib.sha256(buf.getvalue()).hexdigest(),flush=True)
           PY
       - name: Retain original live screenshots
         if: always()
