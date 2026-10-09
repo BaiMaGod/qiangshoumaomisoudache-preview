@@ -1,4 +1,4 @@
-# Preview release: concept implementation V3: corrected harbor geometry, minimap and all interfaces; publish after official SDK and three-viewport QA.
+# Preview release: concept implementation V3: lightweight harbor and complete interface acceptance; publish after official SDK and three-viewport QA.
 name: Build private GunCat with LayaAir 3.4 and publish Pages
 on:
   workflow_dispatch:
@@ -38,7 +38,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: BaiMaGod/qiangshoumaomisoudache
-          ref: dc8136c83159b2eade69df94c3fa7ddacf80c6b0
+          ref: 3e6aa475a7b748bfe8ada463fe21a51b8e848195
           fetch-depth: 0
           token: ${{ secrets.GUNCAT_SOURCE_READ_TOKEN }}
           path: private-game
