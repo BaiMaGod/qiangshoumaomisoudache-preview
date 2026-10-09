@@ -1,4 +1,4 @@
-# Rarity loot and adaptive extraction guidance: verified new source snapshot, full browser and mobile gates.
+# Final route-accurate + offscreen FX release; real-engine, Boss, input and motion gates required.
 name: Build private GunCat with LayaAir 3.4 and publish Pages
 on:
   workflow_dispatch:
