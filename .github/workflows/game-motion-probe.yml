@@ -1,0 +1,102 @@
+name: Measure native Laya motion rendering
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/game-motion-probe.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  motion-control:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: BaiMaGod/qiangshoumaomisoudache
+          ref: 25143273e9146bdf2e68cdf5b3934d70304c8b8e
+          token: ${{ secrets.GUNCAT_SOURCE_READ_TOKEN }}
+          path: private-game
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@v4
+        with:
+          name: guncat-pages-1
+          path: verified-package
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: BaiMaGod/qiangshoumaomisoudache-preview
+          run-id: 37812098367
+      - name: Reuse unchanged verified official SDK for diagnostics only
+        working-directory: private-game
+        shell: bash
+        run: |
+          npm ci --no-audit --no-fund
+          mkdir "$RUNNER_TEMP/verified-sdk"
+          tar -xf ../verified-package/artifact.tar -C "$RUNNER_TEMP/verified-sdk"
+          node tools/dev/build-using-sdk.mjs "$RUNNER_TEMP/verified-sdk"
+          python -m pip install playwright==1.55.0
+          python -m playwright install --with-deps chromium
+      - name: Compare continuous movement with direct and parent camera transforms
+        working-directory: private-game
+        shell: bash
+        run: |
+          cat > "$RUNNER_TEMP/parent-variant.mjs" <<'JS'
+          import {readFileSync,writeFileSync,cpSync,mkdirSync} from 'node:fs';
+          import {bundleGame} from process.env.BUNDLE_MODULE;
+          JS
+          node --input-type=module <<'JS'
+          import {readFileSync,writeFileSync,cpSync,mkdirSync} from 'node:fs';
+          const s=readFileSync('src/Main.ts','utf8');
+          let p=s.replace('private topScenery:any;','private topScenery:any;private sceneryCamera:any;')
+            .replace('this.topScenery=new Laya.Sprite();','this.sceneryCamera=new Laya.Sprite();Laya.stage.addChild(this.sceneryCamera);this.topScenery=new Laya.Sprite();')
+            .replace('Laya.stage.addChild(this.topScenery);','this.sceneryCamera.addChild(this.topScenery);this.topScenery.pos(0,-TOP_SCENERY);')
+            .replace('Laya.stage.addChild(this.terrain);','this.sceneryCamera.addChild(this.terrain);')
+            .replace('this.terrain.pos(x0,y0);this.topScenery.pos(x0,y0-TOP_SCENERY);','this.sceneryCamera.pos(x0,y0);');
+          if(p===s || !p.includes('this.sceneryCamera.pos(x0,y0);'))throw Error('Candidate patch did not apply');
+          mkdirSync('.motion-parent-src',{recursive:true});cpSync('src','.motion-parent-src',{recursive:true});writeFileSync('.motion-parent-src/Main.ts',p);
+          JS
+          cat > "$RUNNER_TEMP/motion-probe.py" <<'PY'
+          import json,os,subprocess,time,sys,urllib.request
+          from pathlib import Path
+          from playwright.sync_api import sync_playwright
+          out=Path('motion-evidence');out.mkdir()
+          server=subprocess.Popen([sys.executable,'-m','http.server','8765','--bind','127.0.0.1','--directory','.local-preview'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+          results=[]
+          try:
+              time.sleep(.3)
+              with sync_playwright() as p:
+                  browser=p.chromium.launch(headless=False,args=['--no-sandbox'])
+                  for variant in ['direct-bitmap-transform','parent-camera-transform']:
+                      if variant.startswith('parent'):
+                          subprocess.run(['node','--input-type=module','-e',"import {bundleGame} from './tools/release/bundle.mjs';import {writeFileSync} from 'node:fs';writeFileSync('.local-preview/js/guncat-game.js',bundleGame('.motion-parent-src'));"],check=True)
+                      for width,height in [(390,844),(375,667),(1440,900)]:
+                          page=browser.new_page(viewport={'width':width,'height':height},device_scale_factor=2)
+                          errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
+                          page.goto('http://127.0.0.1:8765/',wait_until='networkidle')
+                          page.get_by_role('button',name='开始出击',exact=True).click()
+                          page.get_by_text('HP 100/100',exact=True).wait_for()
+                          sample='''() => new Promise(resolve=>{let prev=performance.now();const a=[];function f(t){a.push(t-prev);prev=t;if(a.length<120)requestAnimationFrame(f);else resolve(a)}requestAnimationFrame(f)})'''
+                          idle=sorted(page.evaluate(sample))
+                          start=page.locator('#guncat-root').get_attribute('data-world-y')
+                          t=time.monotonic();page.keyboard.down('w');motion=sorted(page.evaluate(sample));page.keyboard.up('w')
+                          page.wait_for_timeout(250)
+                          end=page.locator('#guncat-root').get_attribute('data-world-y')
+                          result={'variant':variant,'viewport':f'{width}x{height}','kind':'diagnostic native SDK reuse, not release acceptance','source':'25143273e9146bdf2e68cdf5b3934d70304c8b8e','idleP95':idle[114],'motionP95':motion[114],'motionMedian':motion[60],'motionSeconds':time.monotonic()-t,'worldY':[start,end],'errors':errors}
+                          results.append(result);print('MOTION_PROBE '+json.dumps(result),flush=True)
+                          page.screenshot(path=str(out/f'{variant}-{width}x{height}.png'))
+                          (out/'motion.json').write_text(json.dumps(results,indent=2)+'\n')
+                          page.close()
+                  browser.close()
+          finally:
+              server.terminate();server.wait(timeout=5)
+          PY
+          xvfb-run -a -s '-screen 0 1920x1080x24' python "$RUNNER_TEMP/motion-probe.py"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-motion-diagnostic
+          path: private-game/motion-evidence/
+          if-no-files-found: error
