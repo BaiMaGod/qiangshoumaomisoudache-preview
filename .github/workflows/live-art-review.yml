@@ -6,43 +6,87 @@ on:
     paths: ['.github/workflows/live-art-review.yml']
 permissions:
   contents: read
+concurrency:
+  group: guncat-live-art-review
+  cancel-in-progress: true
 jobs:
   inspect-live:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
-      - name: Install image review dependency
-        run: python -m pip install Pillow
-      - name: Verify live bytes and emit actual screenshots
+      - name: Install real browser and image review dependencies
         run: |
-          python - <<'PY'
+          python -m pip install Pillow playwright==1.55.0
+          python -m playwright install --with-deps chromium
+      - name: Verify accepted live bytes and review phone and desktop
+        run: |
+          xvfb-run -a -s '-screen 0 1920x1080x24' python - <<'PY'
           import base64,hashlib,io,json,time,urllib.request
+          from pathlib import Path
           from PIL import Image,ImageDraw
+          from playwright.sync_api import sync_playwright
           base='https://baimagod.github.io/qiangshoumaomisoudache-preview/'
-          stamp=str(time.time_ns())
+          expected='1803190bf909c078d1858e61a9defbb02a795222'
           def fetch(name):
-              req=urllib.request.Request(base+name+'?audit='+stamp,headers={'User-Agent':'GunCat-art-acceptance'})
+              req=urllib.request.Request(base+name+'?audit='+str(time.time_ns()),headers={'User-Agent':'GunCat-art-acceptance'})
               with urllib.request.urlopen(req,timeout=45) as r:return r.read()
-          manifest=json.loads(fetch('_build-evidence.json'))
+          for attempt in range(180):
+              manifest=json.loads(fetch('_build-evidence.json'))
+              if manifest['sourceCommit']==expected:break
+              time.sleep(5)
+          else:raise AssertionError('Accepted source was not deployed')
           print('LIVE_ART_SOURCE',manifest['sourceCommit'],flush=True)
           assert manifest['verifiedSource']=='real-engine-not-qa-mock'
-          names=['index.html','js/index.js','js/guncat-game.js','assets/art/scene-floor.webp','assets/art/scene-water.webp','assets/art/bg-home.webp','assets/art/bg-workshop.webp','assets/art/frame-metal.webp','assets/art/frame-leather.webp','assets/art/button-gold.webp']
           files={x['path']:x for x in manifest['files']}
+          names=['index.html','js/index.js','js/guncat-game.js','assets/art/scene-floor.webp','assets/art/scene-water.webp','assets/art/bg-home.webp','assets/art/bg-workshop.webp','assets/art/frame-metal.webp','assets/art/frame-leather.webp','assets/art/button-gold.webp']
           for name in names:
               data=fetch(name);assert len(data)==files[name]['bytes'];assert hashlib.sha256(data).hexdigest()==files[name]['sha256']
           print('LIVE_FILE_HASHES_VERIFIED',len(names),flush=True)
+          out=Path('live-art-review');out.mkdir(exist_ok=True)
           def emit(name,pic):
               buf=io.BytesIO();pic.convert('RGB').save(buf,'JPEG',quality=84,optimize=True)
               print('REVIEW_IMAGE '+name+' '+base64.b64encode(buf.getvalue()).decode(),flush=True)
-          labels=['base','warehouse','weapons','upgrades','raid','combat-polish','bag','pause','success','failure']
-          sheet=Image.new('RGB',(1100,1020),'#102b32');draw=ImageDraw.Draw(sheet)
-          for i,name in enumerate(labels):
-              data=fetch('art-review/'+name+'-390x844.png');pic=Image.open(io.BytesIO(data)).convert('RGB')
-              if name in ['raid','bag','pause','upgrades']:
-                  detail=pic.copy();detail.thumbnail((480,1040),Image.Resampling.LANCZOS);emit(name,detail)
-              pic.thumbnail((210,475),Image.Resampling.LANCZOS)
-              x=(i%5)*220+5;y=(i//5)*510+25;sheet.paste(pic,(x,y));draw.text((x,y-20),name,fill='#ffe3a4')
-          emit('live-actual-screens',sheet)
-          for name in ['core-concept','services-concept']:
-              pic=Image.open(io.BytesIO(fetch('art-review/'+name+'.webp')));pic.thumbnail((1500,600),Image.Resampling.LANCZOS);emit(name,pic)
+          with sync_playwright() as p:
+              browser=p.chromium.launch(headless=False,args=['--no-sandbox'])
+              for w,h in [(375,667),(1440,900)]:
+                  errors=[];page=browser.new_page(viewport={'width':w,'height':h},device_scale_factor=2)
+                  page.on('pageerror',lambda err:errors.append(str(err)))
+                  page.on('requestfailed',lambda req:errors.append(req.url))
+                  page.goto(base+'?v='+expected,wait_until='networkidle',timeout=45000)
+                  page.get_by_role('button',name='开始出击',exact=True).wait_for(timeout=20000)
+                  shots=[]
+                  def snap(name):
+                      path=out/(name+'-'+str(w)+'x'+str(h)+'.png')
+                      page.locator('#guncat-root').screenshot(path=str(path));shots.append((name,path))
+                  snap('home')
+                  page.get_by_role('button',name='永久强化',exact=True).click()
+                  page.wait_for_function('() => [...document.images].every(i=>i.complete&&i.naturalWidth>0)')
+                  snap('upgrades')
+                  page.get_by_role('button',name='猫咪基地',exact=True).click()
+                  page.get_by_role('button',name='开始出击',exact=True).click()
+                  page.get_by_text('HP 100/100',exact=True).wait_for()
+                  page.wait_for_timeout(300);snap('raid')
+                  if w==1440:
+                      path=out/'desktop-full.png';page.screenshot(path=str(path))
+                      pic=Image.open(path);pic.thumbnail((1200,750),Image.Resampling.LANCZOS);emit('desktop-full',pic)
+                  page.get_by_role('button',name='暂停',exact=True).click();snap('pause')
+                  page.get_by_role('button',name='继续游戏',exact=True).click()
+                  page.get_by_role('button',name='背包',exact=True).click();snap('bag')
+                  assert page.locator('.gc-slot').count()==12
+                  assert not errors,errors
+                  sheet=Image.new('RGB',(1100,500),'#102b32');draw=ImageDraw.Draw(sheet)
+                  for i,(name,path) in enumerate(shots):
+                      pic=Image.open(path).convert('RGB');pic.thumbnail((210,460),Image.Resampling.LANCZOS)
+                      sheet.paste(pic,(i*220+5,25));draw.text((i*220+5,5),name,fill='#ffe3a4')
+                  emit(str(w)+'x'+str(h)+'-live',sheet)
+                  print('LIVE_VIEWPORT_REVIEW',w,h,page.locator('#guncat-root').bounding_box(),flush=True)
+                  page.close()
+              browser.close()
           PY
+      - name: Retain original live screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: guncat-live-art-review
+          path: live-art-review/
+          if-no-files-found: error
