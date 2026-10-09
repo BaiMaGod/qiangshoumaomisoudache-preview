@@ -1,8 +1,8 @@
-# Final route-accurate + offscreen FX release; real-engine, Boss, input and motion gates required.
+# Preview release: wall-aware enemy pursuit and adaptive effects; publish only after real Laya SDK QA.
 name: Build private GunCat with LayaAir 3.4 and publish Pages
 on:
   workflow_dispatch:
-  # A release-workflow edit explicitly rechecks the latest private main.
+  # Editing this workflow retriggers deployment for the pinned private feature commit.
   # Deployment still requires ALL build + real browser gates to pass.
   push:
     branches: [main]
@@ -16,7 +16,7 @@ concurrency:
   group: guncat-pages-production
   cancel-in-progress: false
 jobs:
-  # Final fixed source snapshot: includes the concurrently added wall-aware advice.
+  # Pin a complete private feature commit; do not check out raw source into public repository.
   verify-build-and-deploy:
     name: Real Laya build → mobile browser QA → Pages
     runs-on: ubuntu-latest
@@ -38,7 +38,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: BaiMaGod/qiangshoumaomisoudache
-          ref: 629c99a2a446733ed149981a4d2f472d34bdb35f
+          ref: a27e2f8a162a37ae975df35d10db45c666c5441a
           fetch-depth: 0
           token: ${{ secrets.GUNCAT_SOURCE_READ_TOKEN }}
           path: private-game
