@@ -37,7 +37,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: BaiMaGod/qiangshoumaomisoudache
-          ref: 996c068a83be12771ea6e65a67ba32078b0c78e4
+          ref: 2660dbc9008c02fbd35c35477f4d442182ab0faa
           fetch-depth: 0
           token: ${{ secrets.GUNCAT_SOURCE_READ_TOKEN }}
           path: private-game
@@ -67,6 +67,22 @@ jobs:
           set -euo pipefail
           bash tools/create-laya-project.sh
           node tools/release/configure-entry.mjs
+      - name: Retain official CLI no-render diagnostics for investigation
+        working-directory: private-game
+        shell: bash
+        run: |
+          mkdir -p qa-evidence/real-laya
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path.home()/'.layaair/3.4.0/Resources/engine/libs/laya.no-render.js'
+          if p.exists():
+              lines=p.read_text().splitlines()
+              selected=set(range(min(100,len(lines))))
+              for i,line in enumerate(lines):
+                  if any(k in line for k in ['class NoRenderStruct2D','class NoRender2DPass','class NoRenderPrimitiveDataHandle','inheriteRenderData']):
+                      selected.update(range(max(0,i-5),min(len(lines),i+100)))
+              (Path('qa-evidence/real-laya')/'cli-no-render-diagnostic.txt').write_text('\n'.join(f'{i+1}: {lines[i]}' for i in sorted(selected))+'\n')
+          PY
       - name: Official CLI Web build and integrity checks
         working-directory: private-game
         shell: bash
@@ -79,7 +95,7 @@ jobs:
         run: |
           python -m pip install playwright==1.55.0
           python -m playwright install --with-deps chromium
-      - name: 'Real SDK browser QA: start, move, shoot, loot, extract, sell'
+      - name: 'Real SDK browser QA: core flow, Boss/rage/reward, deep extraction'
         working-directory: private-game
         shell: bash
         run: |
