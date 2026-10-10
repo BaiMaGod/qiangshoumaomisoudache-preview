@@ -26,11 +26,11 @@ jobs:
           from PIL import Image,ImageDraw
           from playwright.sync_api import sync_playwright
           base='https://baimagod.github.io/qiangshoumaomisoudache-preview/'
-          expected='0e564fc6d4b9c33f75d7d45b8d89517d9f9b5556'
+          expected='ae1c58f0f226f15d9d8420cc552a676269cac662'
           def fetch(name):
               req=urllib.request.Request(base+name+'?audit='+str(time.time_ns()),headers={'User-Agent':'GunCat-art-acceptance'})
               with urllib.request.urlopen(req,timeout=45) as r:return r.read()
-          for attempt in range(180):
+          for attempt in range(24):
               manifest=json.loads(fetch('_build-evidence.json'))
               if manifest['sourceCommit']==expected:break
               time.sleep(5)
@@ -38,7 +38,7 @@ jobs:
           print('LIVE_ART_SOURCE',manifest['sourceCommit'],flush=True)
           assert manifest['verifiedSource']=='real-engine-not-qa-mock'
           files={x['path']:x for x in manifest['files']}
-          names=['index.html','js/index.js','js/guncat-game.js','assets/art/scene-floor.webp','assets/art/scene-water.webp','assets/art/bg-home.webp','assets/art/bg-workshop.webp','assets/art/frame-metal.webp','assets/art/frame-leather.webp','assets/art/button-gold.webp','assets/art/cat-walk.webp',*[f'assets/art/cat-walk-{i}.webp' for i in range(6)],'art-review/animation-summary.json',*[f'art-review/battle-{gun}-390x844.webm' for gun in ['pistol','smg','shotgun']]]
+          names=['index.html','js/index.js','js/guncat-game.js','assets/art/scene-floor.webp','assets/art/scene-water.webp','assets/art/bg-home.webp','assets/art/bg-workshop.webp','assets/art/frame-metal.webp','assets/art/frame-leather.webp','assets/art/button-gold.webp','assets/art/cat-walk.webp',*[f'assets/art/cat-walk-{i}.webp' for i in range(6)],'art-review/animation-summary.json',*[f'art-review/battle-{gun}-390x844.webm' for gun in ['pistol','smg','shotgun']], 'assets/art/enemy-walk.webp', *[f'assets/art/{kind}-walk-{i}.webp' for kind in ['rat','dog','crow'] for i in range(4)],'art-review/enemy-summary.json','art-review/battle-enemies-390x844.webm']
           for name in names:
               data=fetch(name);assert len(data)==files[name]['bytes'];assert hashlib.sha256(data).hexdigest()==files[name]['sha256']
           print('LIVE_FILE_HASHES_VERIFIED',len(names),flush=True)
@@ -82,23 +82,49 @@ jobs:
                   page.get_by_role('button',name='继续游戏',exact=True).click()
                   page.get_by_role('button',name='背包',exact=True).click();snap('bag')
                   assert page.locator('.gc-slot').count()==12
+                  page.get_by_role('button',name='关闭背包',exact=True).click()
+                  page.get_by_role('button',name='暂停',exact=True).click()
+                  page.once('dialog',lambda d:d.accept())
+                  page.get_by_role('button',name='主动放弃',exact=True).click()
+                  page.get_by_role('button',name='返回基地',exact=True).click()
+                  page.evaluate("""()=>{const key='guncat.profile.v1',p=JSON.parse(localStorage.getItem(key));if(!p||p.activeRaidId)throw Error('Expected base');p.unlockedWeaponIds=['pistol','smg','shotgun'];p.equippedWeaponId='shotgun';p.revision++;localStorage.setItem(key,JSON.stringify(p));}""")
+                  page.reload(wait_until='networkidle')
+                  page.get_by_role('button',name='开始出击',exact=True).click()
+                  assert root_ui.get_attribute('data-world-art-ready')=='63'
+                  assert root_ui.get_attribute('data-enemy-atlas-frames')=='12'
+                  walking_captured=False
+                  def move(axis,target):
+                      global walking_captured
+                      for _ in range(180):
+                          gap=target-float(root_ui.get_attribute('data-world-'+axis))
+                          if abs(gap)<18:return
+                          key=('d' if gap>0 else 'a') if axis=='x' else ('s' if gap>0 else 'w')
+                          page.keyboard.down(key);page.wait_for_timeout(min(90,max(30,abs(gap)*1.2)));page.keyboard.up(key);page.wait_for_timeout(20)
+                          if not walking_captured and '-walk-' in motion_ui.get_attribute('data-enemy-frames'):
+                              snap('enemy-walk');walking_captured=True
+                      raise AssertionError('Live route blocked')
+                  for axis,target in [('x',1050),('y',1480),('x',1190),('y',1320),('x',880),('y',930)]:move(axis,target)
+                  page.wait_for_timeout(2200)
+                  move('x',600)
+                  page.wait_for_timeout(160)
+                  enemy_frames=json.loads(motion_ui.get_attribute('data-enemy-frames'))
+                  assert set(f'{kind}-walk-{i}' for kind in ['rat','dog','crow'] for i in range(4))<=set(enemy_frames),enemy_frames
+                  assert int(motion_ui.get_attribute('data-enemy-hits'))>0
+                  assert int(motion_ui.get_attribute('data-enemy-defeats'))>=4
+                  assert int(motion_ui.get_attribute('data-enemy-defeats'))==int(root_ui.get_attribute('data-kill-count'))
+                  snap('enemy-combat')
+                  print('LIVE_TWELVE_ENEMY_FRAMES_AND_REAL_HITS_PASS',w,h,enemy_frames,flush=True)
                   assert not errors,errors
-                  sheet=Image.new('RGB',(1320,500),'#102b32');draw=ImageDraw.Draw(sheet)
+                  sheet=Image.new('RGB',(880,500*((len(shots)+3)//4)),'#102b32');draw=ImageDraw.Draw(sheet)
                   for i,(name,path) in enumerate(shots):
                       pic=Image.open(path).convert('RGB');pic.thumbnail((210,460),Image.Resampling.LANCZOS)
-                      sheet.paste(pic,(i*220+5,25));draw.text((i*220+5,5),name,fill='#ffe3a4')
+                      sheet.paste(pic,((i%4)*220+5,(i//4)*500+25));draw.text(((i%4)*220+5,(i//4)*500+5),name,fill='#ffe3a4')
                   emit(str(w)+'x'+str(h)+'-live',sheet)
                   print('LIVE_VIEWPORT_REVIEW',w,h,page.locator('#guncat-root').bounding_box(),flush=True)
                   page.close()
               browser.close()
-          (out/'live-audit.json').write_text(json.dumps({'source':expected,'filesVerified':len(names),'viewports':['375x667','1440x900'],'sixFrameWalk':True,'pauseAndBag':True,'errors':0},indent=2)+'\n')
-          os.set_blocking(1,True)
-          for name,pic in pending:
-              buf=io.BytesIO();pic.convert('RGB').save(buf,'JPEG',quality=84,optimize=True)
-              payload=base64.b64encode(buf.getvalue()).decode()
-              for offset in range(0,len(payload),8192):
-                  print('REVIEW_IMAGE_CHUNK '+name+' '+str(offset)+' '+payload[offset:offset+8192],flush=True)
-              print('REVIEW_IMAGE_END '+name+' '+str(len(payload))+' '+hashlib.sha256(buf.getvalue()).hexdigest(),flush=True)
+          (out/'live-audit.json').write_text(json.dumps({'source':expected,'filesVerified':len(names),'viewports':['375x667','1440x900'],'sixFrameWalk':True,'pauseAndBag':True,'enemyFrames':12,'trueHitsAndDefeats':True,'errors':0},indent=2)+'\n')
+          for name,pic in pending:pic.save(out/(name+'-contact.png'))
           PY
       - name: Retain original live screenshots
         if: always()
