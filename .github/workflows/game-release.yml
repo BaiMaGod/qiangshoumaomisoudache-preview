@@ -1,4 +1,4 @@
-# Preview release: concept implementation V3: static harbor background and unchanged renderer budget; publish after official SDK and three-viewport QA.
+# V5: existing enemy gait and actual hit/defeat presentation; all original release gates retained.
 name: Build private GunCat with LayaAir 3.4 and publish Pages
 on:
   workflow_dispatch:
@@ -38,7 +38,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: BaiMaGod/qiangshoumaomisoudache
-          ref: 0e564fc6d4b9c33f75d7d45b8d89517d9f9b5556
+          ref: fb5ba72f4d170a39091e9bae754de4dbba70f961
           fetch-depth: 0
           token: ${{ secrets.GUNCAT_SOURCE_READ_TOKEN }}
           path: private-game
@@ -116,6 +116,7 @@ jobs:
           GUNCAT_HEADED=1 xvfb-run -a -s '-screen 0 1920x1080x24' python tools/qa/capture-baseline.py
           GUNCAT_HEADED=1 xvfb-run -a -s '-screen 0 1920x1080x24' npm run release:smoke
           GUNCAT_HEADED=1 xvfb-run -a -s '-screen 0 1920x1080x24' python tools/qa/animation-real.py
+          GUNCAT_HEADED=1 xvfb-run -a -s '-screen 0 1920x1080x24' python tools/qa/enemies-real.py
           python tools/release/art-gallery.py
           npm run release:verify
       - name: Retain official SDK probe (no game source)
@@ -184,7 +185,7 @@ jobs:
               time.sleep(5)
           else:raise AssertionError('Pages did not serve the accepted source commit')
           files={x['path']:x for x in local['files']}
-          names=['index.html','js/index.js','js/guncat-game.js','assets/art/scene-floor.webp','assets/art/scene-water.webp','assets/art/bg-home.webp','assets/art/bg-workshop.webp','assets/art/frame-metal.webp','assets/art/frame-leather.webp','assets/art/button-gold.webp','art-review/index.html','art-review/acceptance-summary.json','assets/art/cat-walk.webp','assets/art/cat-walk-0.webp','assets/art/cat-walk-5.webp','art-review/animation-summary.json','art-review/battle-pistol-390x844.webm','art-review/battle-smg-390x844.webm','art-review/battle-shotgun-390x844.webm']
+          names=['index.html','js/index.js','js/guncat-game.js','assets/art/scene-floor.webp','assets/art/scene-water.webp','assets/art/bg-home.webp','assets/art/bg-workshop.webp','assets/art/frame-metal.webp','assets/art/frame-leather.webp','assets/art/button-gold.webp','art-review/index.html','art-review/acceptance-summary.json','assets/art/cat-walk.webp','assets/art/cat-walk-0.webp','assets/art/cat-walk-5.webp','art-review/animation-summary.json','art-review/battle-pistol-390x844.webm','art-review/battle-smg-390x844.webm','art-review/battle-shotgun-390x844.webm','assets/art/enemy-walk.webp','assets/art/rat-walk-0.webp','assets/art/rat-walk-1.webp','assets/art/rat-walk-2.webp','assets/art/rat-walk-3.webp','assets/art/dog-walk-0.webp','assets/art/dog-walk-1.webp','assets/art/dog-walk-2.webp','assets/art/dog-walk-3.webp','assets/art/crow-walk-0.webp','assets/art/crow-walk-1.webp','assets/art/crow-walk-2.webp','assets/art/crow-walk-3.webp','art-review/enemy-summary.json','art-review/battle-enemies-390x844.webm']
           for name in names:
               data=fetch(name)
               assert len(data)==files[name]['bytes'] and hashlib.sha256(data).hexdigest()==files[name]['sha256'],name
