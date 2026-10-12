@@ -38,7 +38,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: BaiMaGod/qiangshoumaomisoudache
-          ref: ae1c58f0f226f15d9d8420cc552a676269cac662
+          ref: 0363a89f75d248ebbc97f6cada03cf42e3490839
           fetch-depth: 0
           token: ${{ secrets.GUNCAT_SOURCE_READ_TOKEN }}
           path: private-game
@@ -119,6 +119,11 @@ jobs:
           GUNCAT_HEADED=1 xvfb-run -a -s '-screen 0 1920x1080x24' python tools/qa/enemies-real.py
           python tools/release/art-gallery.py
           npm run release:verify
+          python -m http.server 8765 --directory .release-out/web > "$RUNNER_TEMP/v6-http.log" 2>&1 &
+          V6_SERVER_PID=$!
+          trap 'kill "$V6_SERVER_PID"' EXIT
+          curl --retry 10 --retry-connrefused --retry-delay 1 -fsS http://127.0.0.1:8765/ > /dev/null
+          GUNCAT_HEADED=1 xvfb-run -a -s '-screen 0 1920x1080x24' python tools/qa/base-v6.py
       - name: Retain official SDK probe (no game source)
         if: always()
         uses: actions/upload-artifact@v4
@@ -143,6 +148,7 @@ jobs:
         with:
           name: guncat-visual-review
           path: |
+            private-game/qa-evidence/base-v6/
             private-game/qa-evidence/real-laya/*.png
             private-game/qa-evidence/real-laya/*.json
             private-game/qa-evidence/real-laya/*.webm
@@ -185,7 +191,7 @@ jobs:
               time.sleep(5)
           else:raise AssertionError('Pages did not serve the accepted source commit')
           files={x['path']:x for x in local['files']}
-          names=['index.html','js/index.js','js/guncat-game.js','assets/art/scene-floor.webp','assets/art/scene-water.webp','assets/art/bg-home.webp','assets/art/bg-workshop.webp','assets/art/frame-metal.webp','assets/art/frame-leather.webp','assets/art/button-gold.webp','art-review/index.html','art-review/acceptance-summary.json','assets/art/cat-walk.webp','assets/art/cat-walk-0.webp','assets/art/cat-walk-5.webp','art-review/animation-summary.json','art-review/battle-pistol-390x844.webm','art-review/battle-smg-390x844.webm','art-review/battle-shotgun-390x844.webm','assets/art/enemy-walk.webp','assets/art/rat-walk-0.webp','assets/art/rat-walk-1.webp','assets/art/rat-walk-2.webp','assets/art/rat-walk-3.webp','assets/art/dog-walk-0.webp','assets/art/dog-walk-1.webp','assets/art/dog-walk-2.webp','assets/art/dog-walk-3.webp','assets/art/crow-walk-0.webp','assets/art/crow-walk-1.webp','assets/art/crow-walk-2.webp','assets/art/crow-walk-3.webp','art-review/enemy-summary.json','art-review/battle-enemies-390x844.webm']
+          names=['assets/art/bg-base-v6.png','assets/art/guncat-ui-v6.woff','index.html','js/index.js','js/guncat-game.js','assets/art/scene-floor.webp','assets/art/scene-water.webp','assets/art/bg-home.webp','assets/art/bg-workshop.webp','assets/art/frame-metal.webp','assets/art/frame-leather.webp','assets/art/button-gold.webp','art-review/index.html','art-review/acceptance-summary.json','assets/art/cat-walk.webp','assets/art/cat-walk-0.webp','assets/art/cat-walk-5.webp','art-review/animation-summary.json','art-review/battle-pistol-390x844.webm','art-review/battle-smg-390x844.webm','art-review/battle-shotgun-390x844.webm','assets/art/enemy-walk.webp','assets/art/rat-walk-0.webp','assets/art/rat-walk-1.webp','assets/art/rat-walk-2.webp','assets/art/rat-walk-3.webp','assets/art/dog-walk-0.webp','assets/art/dog-walk-1.webp','assets/art/dog-walk-2.webp','assets/art/dog-walk-3.webp','assets/art/crow-walk-0.webp','assets/art/crow-walk-1.webp','assets/art/crow-walk-2.webp','assets/art/crow-walk-3.webp','art-review/enemy-summary.json','art-review/battle-enemies-390x844.webm']
           for name in names:
               data=fetch(name)
               assert len(data)==files[name]['bytes'] and hashlib.sha256(data).hexdigest()==files[name]['sha256'],name
