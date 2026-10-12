@@ -14,7 +14,8 @@ permissions:
   id-token: write
 concurrency:
   group: guncat-pages-production
-  cancel-in-progress: false
+  # A newer pinned preview supersedes obsolete work from this same queue.
+  cancel-in-progress: true
 jobs:
   # Pin a complete private feature commit; do not check out raw source into public repository.
   verify-build-and-deploy:
