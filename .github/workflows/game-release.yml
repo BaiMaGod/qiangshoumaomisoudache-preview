@@ -39,7 +39,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: BaiMaGod/qiangshoumaomisoudache
-          ref: 855df5de4955b28a0901f0e515e6b9cd6d4da6f6
+          ref: cf8c75e2b8dd6ca679f31fcac2cd0d80ffb9da2d
           fetch-depth: 0
           token: ${{ secrets.GUNCAT_SOURCE_READ_TOKEN }}
           path: private-game
@@ -194,6 +194,7 @@ jobs:
           files={x['path']:x for x in local['files']}
           names=['assets/art/bg-base-v6.png','assets/art/guncat-ui-v6.woff','index.html','js/index.js','js/guncat-game.js','assets/art/scene-floor.webp','assets/art/scene-water.webp','assets/art/bg-home.webp','assets/art/bg-workshop.webp','assets/art/frame-metal.webp','assets/art/frame-leather.webp','assets/art/button-gold.webp','art-review/index.html','art-review/acceptance-summary.json','assets/art/cat-walk.webp','assets/art/cat-walk-0.webp','assets/art/cat-walk-5.webp','art-review/animation-summary.json','art-review/battle-pistol-390x844.webm','art-review/battle-smg-390x844.webm','art-review/battle-shotgun-390x844.webm','assets/art/enemy-walk.webp','assets/art/rat-walk-0.webp','assets/art/rat-walk-1.webp','assets/art/rat-walk-2.webp','assets/art/rat-walk-3.webp','assets/art/dog-walk-0.webp','assets/art/dog-walk-1.webp','assets/art/dog-walk-2.webp','assets/art/dog-walk-3.webp','assets/art/crow-walk-0.webp','assets/art/crow-walk-1.webp','assets/art/crow-walk-2.webp','assets/art/crow-walk-3.webp','art-review/enemy-summary.json','art-review/battle-enemies-390x844.webm']
           names+=sorted(p for p in files if p.startswith('assets/art/') and p.endswith('-v7.png'))
+          names+=sorted(p for p in files if p.startswith('art-review/') and p.endswith('-1440x900.png'))
           for name in names:
               data=fetch(name)
               assert len(data)==files[name]['bytes'] and hashlib.sha256(data).hexdigest()==files[name]['sha256'],name
