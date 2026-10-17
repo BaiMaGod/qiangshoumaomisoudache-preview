@@ -1,0 +1,148 @@
+# V9: native Laya 3D presentation; fail closed on all gameplay and motion gates.
+name: Review native GunCat with official LayaAir 3.4 (no deployment)
+on:
+  workflow_dispatch:
+  # Editing this workflow retriggers validation for the pinned private feature commit.
+  # This workflow uploads review artifacts only; it cannot deploy Pages.
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/native-review.yml'
+permissions:
+  contents: read
+concurrency:
+  group: guncat-native-review
+  # A newer pinned preview supersedes obsolete work from this same queue.
+  cancel-in-progress: true
+jobs:
+  # Pin a complete private feature commit; do not check out raw source into public repository.
+  verify-native-review:
+    name: Official Laya build → real browser QA → review artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Require read-only private source token
+        shell: bash
+        env:
+          SOURCE_READ_TOKEN: ${{ secrets.GUNCAT_SOURCE_READ_TOKEN }}
+        run: |
+          if [ -z "$SOURCE_READ_TOKEN" ]; then
+            echo "::error::Add GUNCAT_SOURCE_READ_TOKEN to this public preview repository's Actions secrets. Token must only have Contents: Read access to BaiMaGod/qiangshoumaomisoudache. Never paste it in logs or chat."
+            exit 1
+          fi
+      - name: Checkout PRIVATE game source (never commit it here)
+        uses: actions/checkout@v4
+        with:
+          repository: BaiMaGod/qiangshoumaomisoudache
+          ref: 08aa235e3362d719fb7be78b7b8770c112472035
+          fetch-depth: 0
+          token: ${{ secrets.GUNCAT_SOURCE_READ_TOKEN }}
+          path: private-game
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: TypeScript and domain/map/release guard tests
+        working-directory: private-game
+        run: |
+          npm install --no-audit --no-fund
+          npm run typecheck
+          npm test
+      - name: Install official LayaAir CLI 3.4.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://raw.githubusercontent.com/layabox/layaair-cli/master/install.sh -o "$RUNNER_TEMP/laya-install.sh"
+          bash "$RUNNER_TEMP/laya-install.sh"
+          echo "$HOME/.layaair" >> "$GITHUB_PATH"
+          "$HOME/.layaair/layaair" install 3.4.0
+          "$HOME/.layaair/layaair" list
+      - name: Create official IDE project and configure real entry
+        working-directory: private-game
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tools/create-laya-project.sh
+          node tools/release/configure-entry.mjs
+      - name: Retain official CLI no-render diagnostics for investigation
+        working-directory: private-game
+        shell: bash
+        run: |
+          mkdir -p qa-evidence/real-laya
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path.home()/'.layaair/3.4.0/Resources/engine/libs/laya.no-render.js'
+          if p.exists():
+              lines=p.read_text().splitlines()
+              selected=set(range(min(100,len(lines))))
+              for i,line in enumerate(lines):
+                  if any(k in line for k in ['class NoRenderStruct2D','class NoRender2DPass','class NoRenderPrimitiveDataHandle','inheriteRenderData']):
+                      selected.update(range(max(0,i-5),min(len(lines),i+100)))
+              (Path('qa-evidence/real-laya')/'cli-no-render-diagnostic.txt').write_text('\n'.join(f'{i+1}: {lines[i]}' for i in sorted(selected))+'\n')
+          PY
+      - name: Official CLI Web build and integrity checks
+        working-directory: private-game
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_COMMIT="$(git rev-parse HEAD)"
+          GITHUB_SHA="$SOURCE_COMMIT" npm run release:build
+      - name: Record official engine bytes
+        working-directory: private-game
+        run: |
+          mkdir -p qa-evidence/real-laya
+          cp .release-out/web/_build-evidence.json qa-evidence/real-laya/official-build-manifest.json
+          sha256sum .release-out/web/libs/*.js .release-out/web/js/index.js
+
+      - name: Install Chromium QA dependencies
+        shell: bash
+        run: |
+          python -m pip install playwright==1.55.0 Pillow
+          python -m playwright install --with-deps chromium
+      - name: 'Real native 3D QA: continuous movement, touch, weapons, Boss, 12 states and three maps'
+        working-directory: private-game
+        shell: bash
+        run: |
+          set -euo pipefail
+          GUNCAT_HEADED=1 xvfb-run -a -s '-screen 0 1920x1080x24' npm run release:smoke
+          python tools/release/native-gallery.py
+          npm run release:verify
+      - name: Retain official SDK probe (no game source)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: guncat-official-sdk-probe
+          path: |
+            private-game/.release-out/web/libs/
+            private-game/.release-out/web/js/index.js
+            private-game/.release-out/web/_build-evidence.json
+          if-no-files-found: error
+
+      - name: Upload screenshot evidence (never upload source)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: guncat-real-laya-browser-qa
+          path: private-game/qa-evidence/real-laya/
+          if-no-files-found: error
+      - name: Upload original PNGs and metrics for direct visual review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: guncat-visual-review
+          path: |
+            private-game/qa-evidence/base-v6/
+            private-game/qa-evidence/complete-v8/
+            private-game/qa-evidence/real-laya/*.png
+            private-game/qa-evidence/real-laya/*.json
+            private-game/qa-evidence/real-laya/*.webm
+            private-game/qa-evidence/real-laya/before/performance.json
+          if-no-files-found: error
+          compression-level: 6
+      - name: Upload accepted Web preview for review (no Pages deployment)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: guncat-native-verified-web
+          path: private-game/.release-out/web/
+          if-no-files-found: error
