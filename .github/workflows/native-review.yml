@@ -34,7 +34,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: BaiMaGod/qiangshoumaomisoudache
-          ref: c70ca2275a72368e2f6735a5467933f16a89a8be
+          ref: 6af3448aaf1efa04eaf4ce1ddd2a9678e17ca7f7
           fetch-depth: 0
           token: ${{ secrets.GUNCAT_SOURCE_READ_TOKEN }}
           path: private-game
@@ -99,6 +99,10 @@ jobs:
           mkdir -p qa-evidence/real-laya
           cp .release-out/web/_build-evidence.json qa-evidence/real-laya/official-build-manifest.json
           sha256sum .release-out/web/libs/*.js .release-out/web/js/index.js
+
+      - name: Observe runner CPU after the official build (no process arguments or environment)
+        working-directory: private-game
+        run: python tools/qa/runner-resources.py
 
       - name: Retain unapproved compiled runtime for local diagnosis (no source, no deployment)
         if: always() && steps.officialbuild.outcome == 'success'
