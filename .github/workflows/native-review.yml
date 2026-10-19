@@ -34,7 +34,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: BaiMaGod/qiangshoumaomisoudache
-          ref: 318dbab72d51935d87efb70cc4aa0df31a915346
+          ref: 0f83fdfb851acb4a4756c1f4a29f66b095d43805
           fetch-depth: 0
           token: ${{ secrets.GUNCAT_SOURCE_READ_TOKEN }}
           path: private-game
@@ -112,28 +112,33 @@ jobs:
           path: private-game/.release-out/web/
           retention-days: 3
           if-no-files-found: error
-      - name: Cold movement and touch preflight at the unchanged 33.5ms budget
+      - name: Standard software WebGL movement and touch preflight at the unchanged 33.5ms budget
         working-directory: private-game
         shell: bash
         run: |
           set -euo pipefail
-          GUNCAT_NATIVE_PERFORMANCE_ONLY=1 GUNCAT_HEADED=1 xvfb-run -a -s '-screen 0 1920x1080x24' python tools/qa/native-release.py
+          GUNCAT_SOFTWARE_MODE=webgl-fallback GUNCAT_NATIVE_PERFORMANCE_ONLY=1 GUNCAT_HEADED=1 xvfb-run -a -s '-screen 0 1920x1080x24' python tools/qa/native-release.py
       - name: 'Real native 3D QA: continuous movement, touch, weapons, Boss, 12 states and three maps'
         working-directory: private-game
         shell: bash
         run: |
           set -euo pipefail
-          GUNCAT_HEADED=1 xvfb-run -a -s '-screen 0 1920x1080x24' npm run release:smoke
-          python tools/release/native-gallery.py
-          npm run release:verify
-      - name: Record standard WebGL fallback diagnostic (never changes acceptance)
+          GUNCAT_SOFTWARE_MODE=webgl-fallback GUNCAT_HEADED=1 xvfb-run -a -s '-screen 0 1920x1080x24' npm run release:smoke
+      - name: Retain full software GPU driver stress (diagnostic; never changes target acceptance)
         if: always() && steps.officialbuild.outcome == 'success'
         continue-on-error: true
         working-directory: private-game
         shell: bash
         run: |
           set -euo pipefail
-          GUNCAT_SOFTWARE_MODE=webgl-fallback GUNCAT_NATIVE_PERFORMANCE_ONLY=1 GUNCAT_NATIVE_RELEASE_OUT=qa-evidence/real-laya/webgl-fallback-diagnostic GUNCAT_HEADED=1 xvfb-run -a -s '-screen 0 1920x1080x24' python tools/qa/native-release.py
+          GUNCAT_SOFTWARE_MODE=driver GUNCAT_NATIVE_PERFORMANCE_ONLY=1 GUNCAT_NATIVE_RELEASE_OUT=qa-evidence/real-laya/full-driver-stress GUNCAT_HEADED=1 xvfb-run -a -s '-screen 0 1920x1080x24' python tools/qa/native-release.py
+
+      - name: Assemble real screenshots and verify the exact accepted package
+        if: success()
+        working-directory: private-game
+        run: |
+          python tools/release/native-gallery.py
+          npm run release:verify
 
       - name: Retain official SDK probe (no game source)
         if: always()
