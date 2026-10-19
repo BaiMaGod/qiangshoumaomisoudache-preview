@@ -34,7 +34,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: BaiMaGod/qiangshoumaomisoudache
-          ref: 41efdf4c669b3574941555317c28076480f6666b
+          ref: 318dbab72d51935d87efb70cc4aa0df31a915346
           fetch-depth: 0
           token: ${{ secrets.GUNCAT_SOURCE_READ_TOKEN }}
           path: private-game
@@ -126,6 +126,15 @@ jobs:
           GUNCAT_HEADED=1 xvfb-run -a -s '-screen 0 1920x1080x24' npm run release:smoke
           python tools/release/native-gallery.py
           npm run release:verify
+      - name: Record standard WebGL fallback diagnostic (never changes acceptance)
+        if: always() && steps.officialbuild.outcome == 'success'
+        continue-on-error: true
+        working-directory: private-game
+        shell: bash
+        run: |
+          set -euo pipefail
+          GUNCAT_SOFTWARE_MODE=webgl-fallback GUNCAT_NATIVE_PERFORMANCE_ONLY=1 GUNCAT_NATIVE_RELEASE_OUT=qa-evidence/real-laya/webgl-fallback-diagnostic GUNCAT_HEADED=1 xvfb-run -a -s '-screen 0 1920x1080x24' python tools/qa/native-release.py
+
       - name: Retain official SDK probe (no game source)
         if: always()
         uses: actions/upload-artifact@v4
