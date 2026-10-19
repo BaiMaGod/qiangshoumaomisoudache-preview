@@ -1,207 +1,128 @@
-# V8: complete 12-state UI and three independent maps; all original gates retained.
-name: Build private GunCat with LayaAir 3.4 and publish Pages
+# Deploy the exact immutable official build accepted by native-review.yml.
+name: Promote verified native GunCat Web build to Pages
 on:
   workflow_dispatch:
-  # Editing this workflow retriggers deployment for the pinned private feature commit.
-  # Deployment still requires ALL build + real browser gates to pass.
-  push:
+  workflow_run:
+    workflows: ['Review native GunCat with official LayaAir 3.4 (no deployment)']
     branches: [main]
-    paths:
-      - '.github/workflows/game-release.yml'
+    types: [completed]
 permissions:
   contents: read
+  actions: read
   pages: write
   id-token: write
 concurrency:
   group: guncat-pages-production
-  # A newer pinned preview supersedes obsolete work from this same queue.
   cancel-in-progress: true
 jobs:
-  # Pin a complete private feature commit; do not check out raw source into public repository.
-  verify-build-and-deploy:
-    name: Real Laya build → mobile browser QA → Pages
+  promote:
+    # This one pinned review only; failed, superseded and fork runs cannot deploy.
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.id == 39282816412 && github.event.workflow_run.head_sha == '88ef81acdbb890f2c80666df3461e118d50dfb46' && github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 20
     environment:
       name: github-pages
       url: ${{ steps.publish.outputs.page_url }}
+    env:
+      GUNCAT_PROMOTION_SOURCE: 2b21eab767a8e97e68c0c743a52a294df40e493f
+      REVIEW_RUN_ID: 39282816412
+      REVIEW_HEAD_SHA: 88ef81acdbb890f2c80666df3461e118d50dfb46
     steps:
-      - name: Require read-only private source token
-        shell: bash
-        env:
-          SOURCE_READ_TOKEN: ${{ secrets.GUNCAT_SOURCE_READ_TOKEN }}
-        run: |
-          if [ -z "$SOURCE_READ_TOKEN" ]; then
-            echo "::error::Add GUNCAT_SOURCE_READ_TOKEN to this public preview repository's Actions secrets. Token must only have Contents: Read access to BaiMaGod/qiangshoumaomisoudache. Never paste it in logs or chat."
-            exit 1
-          fi
-      - name: Checkout PRIVATE game source (never commit it here)
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           repository: BaiMaGod/qiangshoumaomisoudache
-          ref: cb252913aa8636bece2877687293f629ea772e01
-          fetch-depth: 0
+          ref: 2b21eab767a8e97e68c0c743a52a294df40e493f
           token: ${{ secrets.GUNCAT_SOURCE_READ_TOKEN }}
           path: private-game
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: TypeScript and domain/map/release guard tests
+      - name: Resolve the unique accepted artifact from this exact pinned review
         working-directory: private-game
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
-          npm install --no-audit --no-fund
-          npm run typecheck
-          npm test
-      - name: Install official LayaAir CLI 3.4.0
-        shell: bash
-        run: |
-          set -euo pipefail
-          curl -fsSL https://raw.githubusercontent.com/layabox/layaair-cli/master/install.sh -o "$RUNNER_TEMP/laya-install.sh"
-          bash "$RUNNER_TEMP/laya-install.sh"
-          echo "$HOME/.layaair" >> "$GITHUB_PATH"
-          "$HOME/.layaair/layaair" install 3.4.0
-          "$HOME/.layaair/layaair" list
-      - name: Create official IDE project and configure real entry
+          node --input-type=module - <<'NODE'
+          import {appendFileSync} from 'node:fs';
+          import {acceptedArtifact} from './tools/release/promotion-guards.mjs';
+          const repository=process.env.GITHUB_REPOSITORY,runId=Number(process.env.REVIEW_RUN_ID),headSha=process.env.REVIEW_HEAD_SHA;
+          async function get(path){const r=await fetch('https://api.github.com/repos/'+repository+path,{headers:{Authorization:'Bearer '+process.env.GITHUB_TOKEN,Accept:'application/vnd.github+json'}});if(!r.ok)throw Error('Pinned review HTTP '+r.status);return r.json();}
+          const run=await get('/actions/runs/'+runId),list=await get('/actions/runs/'+runId+'/artifacts?per_page=100');
+          const candidates=list.artifacts.filter(a=>a.name==='guncat-native-verified-web'&&!a.expired);
+          if(candidates.length!==1)throw Error('One unique accepted artifact required');
+          const artifact=acceptedArtifact(run,list.artifacts,{repository,runId,headSha,artifactId:candidates[0].id});
+          if(!Number.isSafeInteger(artifact.id)||artifact.id<=0)throw Error('Invalid artifact identity');
+          appendFileSync(process.env.GITHUB_ENV,'REVIEW_ARTIFACT_ID='+artifact.id+'\n');
+          console.log('PINNED_ACCEPTED_ARTIFACT',runId,artifact.id,headSha);
+          NODE
+      - name: Verify immutable successful review and accepted artifact identity
+        id: review
         working-directory: private-game
-        shell: bash
-        run: |
-          set -euo pipefail
-          bash tools/create-laya-project.sh
-          node tools/release/configure-entry.mjs
-      - name: Retain official CLI no-render diagnostics for investigation
-        working-directory: private-game
-        shell: bash
-        run: |
-          mkdir -p qa-evidence/real-laya
-          python3 - <<'PY'
-          from pathlib import Path
-          p=Path.home()/'.layaair/3.4.0/Resources/engine/libs/laya.no-render.js'
-          if p.exists():
-              lines=p.read_text().splitlines()
-              selected=set(range(min(100,len(lines))))
-              for i,line in enumerate(lines):
-                  if any(k in line for k in ['class NoRenderStruct2D','class NoRender2DPass','class NoRenderPrimitiveDataHandle','inheriteRenderData']):
-                      selected.update(range(max(0,i-5),min(len(lines),i+100)))
-              (Path('qa-evidence/real-laya')/'cli-no-render-diagnostic.txt').write_text('\n'.join(f'{i+1}: {lines[i]}' for i in sorted(selected))+'\n')
-          PY
-      - name: Official CLI Web build and integrity checks
-        working-directory: private-game
-        shell: bash
-        run: |
-          set -euo pipefail
-          SOURCE_COMMIT="$(git rev-parse HEAD)"
-          GITHUB_SHA="$SOURCE_COMMIT" npm run release:build
-      - name: Record official engine bytes
-        working-directory: private-game
-        run: |
-          mkdir -p qa-evidence/real-laya
-          cp .release-out/web/_build-evidence.json qa-evidence/real-laya/official-build-manifest.json
-          sha256sum .release-out/web/libs/*.js .release-out/web/js/index.js
-
-      - name: Install Chromium QA dependencies
-        shell: bash
-        run: |
-          python -m pip install playwright==1.55.0
-          python -m playwright install --with-deps chromium
-      - name: 'Real SDK browser QA: active motion budget, core flow, Boss/rage/reward, deep extraction'
-        working-directory: private-game
-        shell: bash
-        run: |
-          COLD_GATE_STATUS=0
-          GUNCAT_HEADED=1 xvfb-run -a -s '-screen 0 1920x1080x24' python tools/qa/cold-performance.py || COLD_GATE_STATUS=$?
-          node tools/qa/render-profile.mjs
-          GUNCAT_HEADED=1 xvfb-run -a -s '-screen 0 1920x1080x24' python tools/qa/render-profile.py
-          test "$COLD_GATE_STATUS" -eq 0
-          node tools/dev/build-baseline.mjs
-          GUNCAT_HEADED=1 xvfb-run -a -s '-screen 0 1920x1080x24' python tools/qa/capture-baseline.py
-          GUNCAT_HEADED=1 xvfb-run -a -s '-screen 0 1920x1080x24' npm run release:smoke
-          GUNCAT_HEADED=1 xvfb-run -a -s '-screen 0 1920x1080x24' python tools/qa/animation-real.py
-          GUNCAT_HEADED=1 xvfb-run -a -s '-screen 0 1920x1080x24' python tools/qa/enemies-real.py
-          python -m http.server 8765 --directory .release-out/web > "$RUNNER_TEMP/v6-http.log" 2>&1 &
-          V6_SERVER_PID=$!
-          trap 'kill "$V6_SERVER_PID"' EXIT
-          curl --retry 10 --retry-connrefused --retry-delay 1 -fsS http://127.0.0.1:8765/ > /dev/null
-          GUNCAT_HEADED=1 xvfb-run -a -s '-screen 0 1920x1080x24' python tools/qa/base-v6.py
-          GUNCAT_HEADED=1 xvfb-run -a -s '-screen 0 1920x1080x24' python tools/qa/complete-v8.py
-          python tools/release/art-gallery.py
-          npm run release:verify
-      - name: Retain official SDK probe (no game source)
-        if: always()
-        uses: actions/upload-artifact@v4
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node tools/release/verify-review-run.mjs
+      - name: Download that exact verified official Web package
+        uses: actions/download-artifact@v4
         with:
-          name: guncat-official-sdk-probe
-          path: |
-            private-game/.release-out/web/libs/
-            private-game/.release-out/web/js/index.js
-            private-game/.release-out/web/_build-evidence.json
-          if-no-files-found: error
-
-      - name: Upload screenshot evidence (never upload source)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: guncat-real-laya-browser-qa
-          path: private-game/qa-evidence/real-laya/
-          if-no-files-found: error
-      - name: Upload original PNGs and metrics for direct visual review
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: guncat-visual-review
-          path: |
-            private-game/qa-evidence/base-v6/
-            private-game/qa-evidence/complete-v8/
-            private-game/qa-evidence/real-laya/*.png
-            private-game/qa-evidence/real-laya/*.json
-            private-game/qa-evidence/real-laya/*.webm
-            private-game/qa-evidence/real-laya/before/performance.json
-          if-no-files-found: error
-          compression-level: 6
-      - name: Export unretouched visual review
-        if: always()
+          artifact-ids: ${{ steps.review.outputs.artifact_id }}
+          run-id: 39282816412
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+          merge-multiple: true
+          path: private-game/.release-out/web
+      - name: Recheck source identity, all native proof and every compiled file hash
         working-directory: private-game
-        run: |
-          python -m pip install Pillow
-          python tools/qa/review-contact.py
-      - name: Upload verified WEB OUTPUT only to Pages
-        if: success()
+        run: node tools/release/verify-promotion.mjs
+      - name: Upload only the accepted Web package to Pages
         uses: actions/upload-pages-artifact@v3
         with:
           name: guncat-pages-${{ github.run_attempt }}
           path: private-game/.release-out/web
-      - name: Deploy verified Web package to GitHub Pages
-        if: success()
+      - name: Deploy verified native Web package
         id: publish
         uses: actions/deploy-pages@v4
         with:
           artifact_name: guncat-pages-${{ github.run_attempt }}
-      - name: Verify deployed source and live runtime bytes
-        if: success()
+      - name: Verify live source and critical runtime bytes
         working-directory: private-game
+        env:
+          GUNCAT_LIVE_URL: ${{ steps.publish.outputs.page_url }}
         run: |
           python - <<'PY'
-          import hashlib,json,time,urllib.request
+          import hashlib,json,os,time,urllib.request
           from pathlib import Path
-          local=json.loads(Path('.release-out/web/_build-evidence.json').read_text())
-          base='https://baimagod.github.io/qiangshoumaomisoudache-preview/'
-          version=local['sourceCommit']
+          version=os.environ['GUNCAT_PROMOTION_SOURCE'];base=os.environ['GUNCAT_LIVE_URL'].rstrip('/')+'/'
           def fetch(path):
-              with urllib.request.urlopen(base+path+'?verified='+version,timeout=45) as r:return r.read()
+              with urllib.request.urlopen(base+path+'?accepted='+version,timeout=45) as r:return r.read()
+          local=json.loads(Path('.release-out/web/_build-evidence.json').read_text())
           for attempt in range(12):
               remote=json.loads(fetch('_build-evidence.json'))
               if remote['sourceCommit']==version:break
               time.sleep(5)
-          else:raise AssertionError('Pages did not serve the accepted source commit')
-          files={x['path']:x for x in local['files']}
-          names=['assets/art/bg-base-v6.png','assets/art/guncat-ui-v6.woff','index.html','js/index.js','js/guncat-game.js','assets/art/scene-floor.webp','assets/art/scene-water.webp','assets/art/bg-home.webp','assets/art/bg-workshop.webp','assets/art/frame-metal.webp','assets/art/frame-leather.webp','assets/art/button-gold.webp','art-review/index.html','art-review/acceptance-summary.json','assets/art/cat-walk.webp','assets/art/cat-walk-0.webp','assets/art/cat-walk-5.webp','art-review/animation-summary.json','art-review/battle-pistol-390x844.webm','art-review/battle-smg-390x844.webm','art-review/battle-shotgun-390x844.webm','assets/art/enemy-walk.webp','assets/art/rat-walk-0.webp','assets/art/rat-walk-1.webp','assets/art/rat-walk-2.webp','assets/art/rat-walk-3.webp','assets/art/dog-walk-0.webp','assets/art/dog-walk-1.webp','assets/art/dog-walk-2.webp','assets/art/dog-walk-3.webp','assets/art/crow-walk-0.webp','assets/art/crow-walk-1.webp','assets/art/crow-walk-2.webp','assets/art/crow-walk-3.webp','art-review/enemy-summary.json','art-review/battle-enemies-390x844.webm']
-          names+=sorted(p for p in files if p.startswith('assets/art/') and p.endswith('-v7.png'))
-          names+=sorted(p for p in files if p.startswith('assets/art/') and ('-v8.' in p))
-          names.append('art-review/complete-v8.json')
-          names+=sorted(p for p in files if p.startswith('art-review/') and p.endswith('-1440x900.png'))
-          for name in names:
-              data=fetch(name)
-              assert len(data)==files[name]['bytes'] and hashlib.sha256(data).hexdigest()==files[name]['sha256'],name
+          else:raise AssertionError('Live source does not match the accepted build')
+          names={'index.html','js/index.js','js/guncat-game.js','art-review/native-release.json','art-review/native-performance.json','art-review/complete-v8.json'}
+          names.update(f['path'] for f in local['files'] if f['path'].startswith(('libs/','assets/packed-v9/')) or f['path'].startswith('assets/art/terrain-') or f['path'].endswith('.woff'))
+          files={f['path']:f for f in local['files']}
+          for path in sorted(names):
+              data=fetch(path);assert len(data)==files[path]['bytes'] and hashlib.sha256(data).hexdigest()==files[path]['sha256'],path
           print('LIVE_ACCEPTED_SOURCE',version)
-          print('LIVE_ACCEPTED_FILE_HASHES',len(names))
+          print('LIVE_ACCEPTED_RUNTIME_HASHES',len(names))
           PY
+      - name: Install real browser for live interaction verification
+        run: |
+          python -m pip install playwright==1.55.0 Pillow
+          python -m playwright install --with-deps chromium
+      - name: Play the deployed game in two viewports and all three maps
+        working-directory: private-game
+        env:
+          GUNCAT_LIVE_URL: ${{ steps.publish.outputs.page_url }}
+          GUNCAT_SOFTWARE_MODE: webgl-fallback
+        run: GUNCAT_HEADED=1 xvfb-run -a -s '-screen 0 1920x1080x24' python tools/qa/live-native.py
+      - name: Retain live screenshots and interaction results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: guncat-live-native-verification
+          path: private-game/qa-evidence/live-native/
+          if-no-files-found: warn
