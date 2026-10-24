@@ -34,7 +34,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: BaiMaGod/qiangshoumaomisoudache
-          ref: 288f385a6845ad5415029fce99b9b7c256b71f31
+          ref: 14bf5646d4c104686c84297c4573ef65420da3f9
           fetch-depth: 0
           token: ${{ secrets.GUNCAT_SOURCE_READ_TOKEN }}
           path: private-game
