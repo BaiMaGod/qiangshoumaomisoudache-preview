@@ -17,21 +17,21 @@ concurrency:
 jobs:
   promote:
     # This one pinned review only; failed, superseded and fork runs cannot deploy.
-    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.id == 40045562162 && github.event.workflow_run.head_sha == 'b0c81e4310f2ce191350a984de5008fad783e2aa' && github.event.workflow_run.conclusion == 'success')
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.id == 40046681202 && github.event.workflow_run.head_sha == '29638e1f14b2f5f10587562d4ac157581ead1447' && github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment:
       name: github-pages
       url: ${{ steps.publish.outputs.page_url }}
     env:
-      GUNCAT_PROMOTION_SOURCE: fdd3d95ac7815d29dad9d38d3844c3276827a2c6
-      REVIEW_RUN_ID: 40045562162
-      REVIEW_HEAD_SHA: b0c81e4310f2ce191350a984de5008fad783e2aa
+      GUNCAT_PROMOTION_SOURCE: 481c6a30ea6fe79f2c55ef3127d4e44906311803
+      REVIEW_RUN_ID: 40046681202
+      REVIEW_HEAD_SHA: 29638e1f14b2f5f10587562d4ac157581ead1447
     steps:
       - uses: actions/checkout@v4
         with:
           repository: BaiMaGod/qiangshoumaomisoudache
-          ref: fdd3d95ac7815d29dad9d38d3844c3276827a2c6
+          ref: 481c6a30ea6fe79f2c55ef3127d4e44906311803
           token: ${{ secrets.GUNCAT_SOURCE_READ_TOKEN }}
           path: private-game
           persist-credentials: false
@@ -66,7 +66,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           artifact-ids: ${{ steps.review.outputs.artifact_id }}
-          run-id: 40045562162
+          run-id: 40046681202
           repository: ${{ github.repository }}
           github-token: ${{ github.token }}
           merge-multiple: true
